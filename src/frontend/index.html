@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POS Dulcería, Mascotas & Materias Primas - Multisucursal</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- HTML5 QR / Barcode Scanner CDN -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <link rel="stylesheet" href="css/custom.css">
+</head>
+<body class="bg-gray-100 font-sans antialiased text-gray-800 flex h-screen overflow-hidden">
+
+    <!-- BARRA LATERAL (NAVBAR RECTANGULAR RESPONSIVO) -->
+    <aside id="sidebar" class="bg-slate-900 text-white w-64 flex flex-col justify-between flex-shrink-0 transition-all duration-300 hidden md:flex">
+        <div>
+            <!-- LOGO & TITULO -->
+            <div class="p-4 bg-slate-950 flex items-center gap-3 border-b border-slate-800">
+                <div class="bg-gradient-to-tr from-pink-500 to-amber-400 p-2.5 rounded-xl shadow-lg">
+                    <i class="fa-solid font-bold text-xl text-white fa-store"></i>
+                </div>
+                <div>
+                    <h1 class="font-black text-lg tracking-wide text-amber-400 leading-tight">DULCE POS</h1>
+                    <p class="text-xs text-slate-400 font-medium">Multisucursal & Anti-Fraude</p>
+                </div>
+            </div>
+
+            <!-- USUARIO & SUCURSAL INFO -->
+            <div id="user-info-card" class="p-3 mx-3 my-3 bg-slate-800/80 rounded-xl border border-slate-700/50">
+                <div class="flex items-center gap-2 mb-1">
+                    <span id="user-role-badge" class="bg-amber-500/20 text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-md border border-amber-500/30 uppercase">CAJERO</span>
+                    <span id="user-name" class="text-xs font-bold text-slate-200 truncate">Cargando...</span>
+                </div>
+                <div class="text-[11px] text-slate-400 flex items-center gap-1.5">
+                    <i class="fa-solid fa-code-branch text-amber-400"></i>
+                    <span id="user-branch-name" class="truncate font-semibold text-slate-300">Sucursal Centro</span>
+                </div>
+            </div>
+
+            <!-- NAVEGACIÓN PRINCIPAL -->
+            <nav class="px-2 space-y-1">
+                <button onclick="switchView('pos')" id="nav-pos" class="nav-btn active w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition">
+                    <i class="fa-solid fa-cash-register w-5 text-lg text-amber-400"></i>
+                    <span>Punto de Venta</span>
+                </button>
+                <button onclick="switchView('inventory')" id="nav-inventory" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition">
+                    <i class="fa-solid fa-boxes-stacked w-5 text-lg text-emerald-400"></i>
+                    <span>Inventario y Lotes</span>
+                </button>
+                <button onclick="switchView('shifts')" id="nav-shifts" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition">
+                    <i class="fa-solid fa-vault w-5 text-lg text-cyan-400"></i>
+                    <span>Caja & Arqueos</span>
+                </button>
+                <button onclick="switchView('dashboard')" id="nav-dashboard" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition">
+                    <i class="fa-solid fa-chart-pie w-5 text-lg text-purple-400"></i>
+                    <span>Dashboard Dueño</span>
+                </button>
+                <button onclick="switchView('audit')" id="nav-audit" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition">
+                    <i class="fa-solid fa-shield-halved w-5 text-lg text-rose-400"></i>
+                    <span>Auditoría Anti-Fraude</span>
+                </button>
+            </nav>
+        </div>
+
+        <!-- BOTÓN CERRAR SESIÓN -->
+        <div class="p-3 border-t border-slate-800">
+            <button onclick="logout()" class="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 transition">
+                <i class="fa-solid fa-right-from-bracket"></i>
+                <span>Cerrar Sesión</span>
+            </button>
+        </div>
+    </aside>
+
+    <!-- ÁREA PRINCIPAL DE CONTENIDO -->
+    <main class="flex-1 flex flex-col h-screen overflow-hidden bg-gray-100">
+        
+        <!-- TOPBAR MÓVIL Y NOTIFICACIONES -->
+        <header class="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm z-10">
+            <div class="flex items-center gap-3">
+                <button onclick="toggleSidebar()" class="md:hidden text-gray-600 text-xl">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+                <h2 id="view-title" class="font-extrabold text-xl text-gray-800">Punto de Venta</h2>
+            </div>
+            <!-- STATUS SANGRÍA & ALERTA DE EFECTIVO -->
+            <div id="drawer-warning-banner" class="hidden bg-amber-100 border border-amber-300 text-amber-800 text-xs px-3 py-1.5 rounded-lg flex items-center gap-2 animate-pulse">
+                <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>
+                <span class="font-bold">¡Atención! Efectivo en caja alto. Se sugiere Sangría.</span>
+            </div>
+        </header>
+
+        <!-- CONTENEDOR DE VISTAS (SPA) -->
+        <div class="flex-1 overflow-y-auto p-4 relative" id="main-container">
+
+            <!-- 1. VISTA: PUNTO DE VENTA (POS) -->
+            <div id="view-pos" class="h-full flex flex-col lg:flex-row gap-4">
+                <!-- GRID DE PRODUCTOS & BÚSQUEDA -->
+                <div class="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                    <!-- BARRA DE BÚSQUEDA Y ESCÁNER -->
+                    <div class="p-3 border-b border-gray-200 bg-gray-50 flex gap-2">
+                        <div class="relative flex-1">
+                            <i class="fa-solid fa-barcode absolute left-3 top-3 text-gray-400"></i>
+                            <input type="text" id="pos-search-input" placeholder="Escaneé código de barras o busque producto (F2)..." 
+                                   class="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none font-medium">
+                        </div>
+                        <button onclick="openCameraScanner()" class="px-3 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 hover:bg-slate-700">
+                            <i class="fa-solid fa-camera"></i>
+                            <span class="hidden sm:inline">Cámara</span>
+                        </button>
+                    </div>
+
+                    <!-- BOTONES DE CATEGORÍAS -->
+                    <div id="category-pills" class="flex gap-2 p-3 overflow-x-auto border-b border-gray-100 bg-white">
+                        <button onclick="filterCategory(null)" class="category-pill active">Todos</button>
+                    </div>
+
+                    <!-- GRID DE PRODUCTOS RÁPIDOS -->
+                    <div id="products-grid" class="flex-1 p-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 overflow-y-auto align-content-start">
+                        <!-- Carga dinámica de tarjetas de producto -->
+                    </div>
+                </div>
+
+                <!-- PANEL DE CARRITO DE COMPRAS Y COBRO -->
+                <div class="w-full lg:w-96 bg-white rounded-2xl shadow-sm border border-gray-200 flex flex-col h-full overflow-hidden">
+                    <div class="p-3 bg-slate-900 text-white flex justify-between items-center">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-cart-shopping text-amber-400"></i>
+                            <span class="font-bold text-sm">Ticket Actual</span>
+                        </div>
+                        <button onclick="clearCart()" class="text-xs text-rose-300 hover:text-white font-semibold">Vaciar</button>
+                    </div>
+
+                    <!-- LISTA DE ARTÍCULOS EN CARRITO -->
+                    <div id="cart-items-container" class="flex-1 overflow-y-auto p-3 divide-y divide-gray-100">
+                        <div class="text-center py-12 text-gray-400 text-sm">
+                            <i class="fa-solid fa-basket-shopping text-4xl mb-2 text-gray-300"></i>
+                            <p>El carrito está vacío</p>
+                        </div>
+                    </div>
+
+                    <!-- TOTALES Y BOTÓN DE COBRO -->
+                    <div class="p-4 bg-gray-50 border-t border-gray-200 space-y-3">
+                        <div class="flex justify-between text-sm text-gray-600 font-medium">
+                            <span>Subtotal:</span>
+                            <span id="cart-subtotal" class="font-bold">$0.00</span>
+                        </div>
+                        <div class="flex justify-between text-2xl font-black text-slate-900 border-t border-gray-200 pt-2">
+                            <span>TOTAL:</span>
+                            <span id="cart-total" class="text-amber-600">$0.00</span>
+                        </div>
+                        <button onclick="openCheckoutModal()" id="btn-checkout" disabled class="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-black text-lg rounded-xl shadow-lg hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-cash-register"></i>
+                            <span>COBRAR TICKET</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. VISTA: INVENTARIO Y LOTES -->
+            <div id="view-inventory" class="hidden space-y-4">
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex flex-wrap gap-3 justify-between items-center">
+                    <div class="flex gap-2 flex-1 max-w-md">
+                        <input type="text" id="inv-search" placeholder="Buscar por SKU o nombre..." class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm">
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="openTransferModal()" class="px-4 py-2 bg-slate-800 text-white font-bold text-xs rounded-xl hover:bg-slate-700">
+                            <i class="fa-solid fa-truck-ramp-box mr-1"></i> Transferir a Sucursal
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr id="inventory-table-header" class="bg-slate-900 text-white text-xs font-bold uppercase tracking-wider">
+                                <th class="p-3">SKU / Barras</th>
+                                <th class="p-3">Producto</th>
+                                <th class="p-3">Categoría</th>
+                                <th class="p-3">Precio Costo</th>
+                                <th class="p-3">Precio Venta</th>
+                                <th class="p-3">Stock Actual</th>
+                                <th class="p-3">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventory-table-body" class="divide-y divide-gray-100 text-sm font-medium">
+                            <!-- Datos de inventario -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 3. VISTA: CAJA Y ARQUEOS -->
+            <div id="view-shifts" class="hidden space-y-4 max-w-4xl mx-auto">
+                <div id="shift-status-card" class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                    <!-- Estado de turno -->
+                </div>
+            </div>
+
+            <!-- 4. VISTA: DASHBOARD DUEÑO (ANALÍTICA Y VENTAS POR CAJERO) -->
+            <div id="view-dashboard" class="hidden space-y-6">
+                <!-- KPI CARDS -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                        <span class="text-xs font-bold text-gray-400 uppercase">Ventas Hoy</span>
+                        <h3 id="dash-sales-today" class="text-3xl font-black text-slate-900 mt-1">$0.00</h3>
+                        <p id="dash-tickets-today" class="text-xs text-gray-500 mt-1">0 tickets procesados</p>
+                    </div>
+                    <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                        <span class="text-xs font-bold text-gray-400 uppercase">Ventas Mes Actual</span>
+                        <h3 id="dash-sales-month" class="text-3xl font-black text-emerald-600 mt-1">$0.00</h3>
+                    </div>
+                    <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                        <span class="text-xs font-bold text-gray-400 uppercase">Sucursales Activas</span>
+                        <h3 class="text-3xl font-black text-amber-500 mt-1">2</h3>
+                    </div>
+                    <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                        <span class="text-xs font-bold text-gray-400 uppercase">Alertas Anti-Fraude</span>
+                        <h3 id="dash-alerts-count" class="text-3xl font-black text-rose-500 mt-1">0</h3>
+                    </div>
+                </div>
+
+                <!-- RENDIMIENTO Y VENTAS POR CAJERO -->
+                <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                    <h4 class="font-extrabold text-base text-slate-900 mb-2">👤 Rendimiento y Ventas por Cajero</h4>
+                    <p class="text-xs text-gray-500 mb-4">Ventas acumuladas y cantidad de tickets procesados por cada empleado.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-900 text-white uppercase font-bold">
+                                <tr>
+                                    <th class="p-2.5">Cajero / Empleado</th>
+                                    <th class="p-2.5">Rol</th>
+                                    <th class="p-2.5">Sucursal Asignada</th>
+                                    <th class="p-2.5">Tickets Atendidos</th>
+                                    <th class="p-2.5">Total Vendido ($)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cashiers-table-body" class="divide-y divide-gray-100 font-medium"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- GRÁFICAS -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                        <h4 class="font-bold text-sm text-gray-700 mb-4">Ventas por Sucursal</h4>
+                        <canvas id="chart-branch-sales" height="200"></canvas>
+                    </div>
+                    <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                        <h4 class="font-bold text-sm text-gray-700 mb-4">Ventas por Categoría</h4>
+                        <canvas id="chart-category-sales" height="200"></canvas>
+                    </div>
+                </div>
+
+                <!-- PROYECCIONES Y REABASTECIMIENTO -->
+                <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                    <h4 class="font-extrabold text-base text-slate-900 mb-2">💡 Recomendaciones de Inversión y Reabastecimiento</h4>
+                    <p class="text-xs text-gray-500 mb-4">Basado en velocidad de venta de los últimos 30 días para evitar quiebres de stock.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-gray-100 text-gray-600 uppercase font-bold">
+                                <tr>
+                                    <th class="p-2.5">Producto</th>
+                                    <th class="p-2.5">Sucursal</th>
+                                    <th class="p-2.5">Stock</th>
+                                    <th class="p-2.5">Venta Diaria</th>
+                                    <th class="p-2.5">Días Restantes</th>
+                                    <th class="p-2.5">Surtido Sugerido</th>
+                                    <th class="p-2.5">Inversión Estimada</th>
+                                </tr>
+                            </thead>
+                            <tbody id="reorder-table-body" class="divide-y divide-gray-100 font-medium"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 5. VISTA: AUDITORÍA ANTI-FRAUDE -->
+            <div id="view-audit" class="hidden space-y-4">
+                <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                    <h3 class="font-bold text-lg text-slate-900 mb-3">Bitácora Inmutable de Auditoría & Eventos Sensibles</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-900 text-white font-bold uppercase">
+                                <tr>
+                                    <th class="p-2.5">Fecha</th>
+                                    <th class="p-2.5">Usuario</th>
+                                    <th class="p-2.5">Acción</th>
+                                    <th class="p-2.5">Detalles</th>
+                                </tr>
+                            </thead>
+                            <tbody id="audit-table-body" class="divide-y divide-gray-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- MODAL DE LOGIN -->
+    <div id="modal-login" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl p-6 border border-gray-100">
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-gradient-to-tr from-pink-500 to-amber-400 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">
+                    <i class="fa-solid fa-store text-white text-3xl"></i>
+                </div>
+                <h2 class="text-2xl font-black text-slate-900">Iniciar Sesión POS</h2>
+                <p class="text-xs text-gray-500 mt-1">Seleccione o ingrese credenciales de sucursal</p>
+            </div>
+            <form onsubmit="handleLogin(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Usuario</label>
+                    <input type="text" id="login-username" required value="cajero_centro" placeholder="ej. cajero_centro" 
+                           class="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Contraseña</label>
+                    <input type="password" id="login-password" required value="cajero123" placeholder="••••••••" 
+                           class="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                </div>
+                <div class="bg-amber-50 border border-amber-200 p-3 rounded-xl text-[11px] text-amber-800">
+                    <p class="font-bold mb-1">Cuentas de Prueba Rápida:</p>
+                    <p>• Dueño (Multi-sucursal): <code class="font-bold">dueno / admin123</code></p>
+                    <p>• Cajero Centro: <code class="font-bold">cajero_centro / cajero123</code></p>
+                    <p>• Cajero Norte: <code class="font-bold">cajero_norte / cajero123</code></p>
+                </div>
+                <button type="submit" class="w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-sm rounded-xl shadow-lg transition">
+                    ACCEDER AL SISTEMA
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL DE EDICIÓN DE PRECIO EN TIEMPO REAL -->
+    <div id="modal-edit-price" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
+            <h3 class="text-lg font-black text-slate-900 mb-1">Cambiar Precio en Tiempo Real</h3>
+            <p id="edit-price-prod-name" class="text-xs text-amber-600 font-bold mb-4">Producto</p>
+            <form onsubmit="handleSavePrice(event)" class="space-y-3">
+                <input type="hidden" id="edit-price-prod-id">
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Precio Costo ($)</label>
+                    <input type="number" id="edit-price-cost" step="0.01" required class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm font-bold">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Precio Venta al Público ($)</label>
+                    <input type="number" id="edit-price-sale" step="0.01" required class="w-full px-3 py-2 border border-gray-300 rounded-xl text-lg font-black text-amber-600">
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="closeEditPriceModal()" class="flex-1 py-2.5 bg-gray-200 text-gray-700 font-bold text-xs rounded-xl">Cancelar</button>
+                    <button type="submit" class="flex-1 py-2.5 bg-amber-500 text-slate-950 font-extrabold text-xs rounded-xl shadow hover:bg-amber-400">Guardar & Transmitir</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL DE TRANSFERENCIA A SUCURSAL -->
+    <div id="modal-transfer" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl p-6 border border-gray-100">
+            <h3 class="text-lg font-black text-slate-900 mb-4">Transferir Mercancía a otra Sucursal</h3>
+            <form onsubmit="handleSendTransfer(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Sucursal Origen (Sale de)</label>
+                    <select id="transfer-from-branch" class="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-xs font-semibold">
+                        <option value="1">Sucursal Centro</option>
+                        <option value="2">Sucursal Norte</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Sucursal Destino (Llega a)</label>
+                    <select id="transfer-to-branch" class="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-xs font-semibold">
+                        <option value="2">Sucursal Norte</option>
+                        <option value="1">Sucursal Centro</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Seleccionar Producto</label>
+                    <select id="transfer-prod-id" class="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-xs font-semibold">
+                        <!-- Carga dinámica -->
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Cantidad a Enviar</label>
+                    <input type="number" id="transfer-qty" min="1" step="0.1" required value="10" class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm font-bold">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Notas / Motivo de envío</label>
+                    <input type="text" id="transfer-notes" placeholder="ej. Reabastecimiento urgente de croquetas" class="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs">
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="closeTransferModal()" class="flex-1 py-2.5 bg-gray-200 text-gray-700 font-bold text-xs rounded-xl">Cancelar</button>
+                    <button type="submit" class="flex-1 py-2.5 bg-slate-900 text-white font-extrabold text-xs rounded-xl shadow hover:bg-slate-800">Enviar Transferencia</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL DE AUTORIZACIÓN POR PIN DE GERENTE -->
+    <div id="modal-pin" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-6 border border-gray-100 text-center">
+            <div class="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                <i class="fa-solid fa-lock text-xl"></i>
+            </div>
+            <h3 class="text-lg font-black text-slate-900">Autorización de Gerencia</h3>
+            <p class="text-xs text-gray-500 mb-4">Ingrese PIN de 4 dígitos para aprobar la acción sensible</p>
+            <input type="password" id="manager-pin-input" maxlength="4" placeholder="••••" 
+                   class="w-32 mx-auto text-center text-3xl tracking-widest px-3 py-2 border-2 border-gray-300 rounded-xl focus:border-rose-500 focus:outline-none font-bold mb-4">
+            <div class="flex gap-2">
+                <button onclick="closePinModal(false)" class="flex-1 py-2.5 bg-gray-200 text-gray-700 font-bold text-xs rounded-xl">Cancelar</button>
+                <button onclick="submitPinModal()" class="flex-1 py-2.5 bg-rose-600 text-white font-bold text-xs rounded-xl shadow">Autorizar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE COBRO DE TICKET -->
+    <div id="modal-checkout" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl p-6 border border-gray-100">
+            <h3 class="text-xl font-black text-slate-900 mb-4">Cobrar Ticket</h3>
+            <div class="bg-gray-100 p-4 rounded-2xl mb-4 text-center">
+                <span class="text-xs text-gray-500 font-bold uppercase">Monto Total a Cobrar</span>
+                <div id="modal-checkout-total" class="text-4xl font-black text-slate-900">$0.00</div>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Método de Pago</label>
+                    <select id="checkout-method" onchange="toggleCashInput()" class="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm font-semibold">
+                        <option value="CASH">Efectivo</option>
+                        <option value="CARD">Tarjeta de Crédito / Débito</option>
+                        <option value="CREDIT">Crédito (Fiado / Cliente)</option>
+                    </select>
+                </div>
+                <div id="cash-input-group">
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Efectivo Recibido</label>
+                    <input type="number" id="checkout-cash-received" oninput="calculateChange()" placeholder="0.00" step="0.01"
+                           class="w-full px-4 py-3 border border-gray-300 rounded-xl text-lg font-bold text-emerald-600">
+                    <div class="flex justify-between text-sm mt-2 font-bold text-gray-700">
+                        <span>Cambio a Entregar:</span>
+                        <span id="checkout-change-given" class="text-emerald-600 text-lg">$0.00</span>
+                    </div>
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button onclick="closeCheckoutModal()" class="flex-1 py-3 bg-gray-200 text-gray-700 font-bold rounded-xl text-sm">Cancelar</button>
+                    <button onclick="confirmCheckout()" class="flex-1 py-3 bg-emerald-600 text-white font-extrabold rounded-xl text-sm shadow-lg hover:bg-emerald-700">
+                        FINALIZAR VENTA
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPTS JS SPA -->
+    <script src="js/app.js"></script>
+    <script src="js/pos.js"></script>
+    <script src="js/inventory.js"></script>
+    <script src="js/shifts.js"></script>
+    <script src="js/dashboard.js"></script>
+</body>
+</html>

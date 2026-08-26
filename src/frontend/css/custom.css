@@ -1,0 +1,67 @@
+/* ESTILOS PERSONALIZADOS POS DULCERÍA & SUCURSALES */
+
+.category-pill {
+    padding: 0.5rem 1rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    white-space: nowrap;
+    background-color: #f3f4f6;
+    color: #4b5563;
+    transition: all 0.2s ease;
+    border: 1px solid #e5e7eb;
+}
+
+.category-pill:hover {
+    background-color: #e5e7eb;
+}
+
+.category-pill.active {
+    background-color: #0f172a;
+    color: #fbbf24;
+    border-color: #0f172a;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.nav-btn {
+    color: #94a3b8;
+}
+
+.nav-btn:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    color: #f8fafc;
+}
+
+.nav-btn.active {
+    background-color: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+    border-right: 4px solid #fbbf24;
+}
+
+/* Tarjeta de Producto Táctil POS */
+.product-card {
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    user-select: none;
+}
+
+.product-card:active {
+    transform: scale(0.96);
+}
+
+/* Estilos de Ticket Térmico para Impresión */
+@media print {
+    body * {
+        visibility: hidden;
+    }
+    #printable-receipt, #printable-receipt * {
+        visibility: visible;
+    }
+    #printable-receipt {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 80mm;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 11px;
+    }
+}

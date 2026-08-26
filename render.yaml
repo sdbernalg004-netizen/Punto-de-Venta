@@ -1,0 +1,19 @@
+# CONFIGURACIÓN 1-CLICK PARA RENDER.COM
+services:
+  - type: web
+    name: dulceria-pos-app
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PORT
+        value: 10000
+    disk:
+      name: pos-data
+      mountPath: /app/data
+      sizeGB: 1

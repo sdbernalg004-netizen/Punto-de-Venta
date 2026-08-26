@@ -1,0 +1,17 @@
+# Dependencias de Node.js (SE DESCARGAN AUTOMÁTICAMENTE EN LA NUBE)
+node_modules/
+
+# Variables de entorno locales con claves secretas
+.env
+
+# Base de datos SQLite local de pruebas (para que en la nube inicie limpia o con su propio volumen)
+pos_database.db
+pos_database.db-journal
+pos_database.db-wal
+
+# Archivos del sistema y logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
