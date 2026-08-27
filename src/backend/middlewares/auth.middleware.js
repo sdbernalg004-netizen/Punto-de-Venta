@@ -80,7 +80,7 @@ function verifyManagerPin(req, res, next) {
     }
 
     // Buscar usuarios con rol MANAGER o ADMIN
-    const managers = db.prepare('SELECT id, username, pin_hash, role FROM users WHERE role IN ("ADMIN", "MANAGER") AND is_active = 1').all();
+    const managers = db.prepare("SELECT id, username, pin_hash, role FROM users WHERE role IN ('ADMIN', 'MANAGER') AND is_active = 1").all();
     
     let isAuthorized = false;
     let approvingUser = null;
