@@ -315,3 +315,123 @@ async function confirmCheckout() {
         alert(err.message || 'Error al procesar el cobro.');
     }
 }
+
+// Ventas en Espera / Parked Tickets (Eleventa / SICAR Style)
+async function handleParkCurrentCart() {
+    if (STATE.cart.length === 0) {
+        alert('El carrito está vacío. Agregue productos antes de poner la venta en espera.');
+        return;
+    }
+
+    const ticketName = prompt('Nombre o número para identificar la venta en espera (ej. Cliente playera azul):', `Ticket #${Date.now().toString().slice(-4)}`);
+    if (ticketName === null) return;
+
+    try {
+        const res = await apiFetch('/api/pos/park-ticket', {
+            method: 'POST',
+            body: JSON.stringify({
+                cart: STATE.cart,
+                ticket_name: ticketName
+            })
+        });
+
+        if (res.success) {
+            alert(`⏸️ ${res.message}`);
+            clearCart();
+            loadParkedTicketsCount();
+        } else {
+            alert(res.message);
+        }
+    } catch (err) {
+        alert(err.message || 'Error al poner venta en espera.');
+    }
+}
+
+async function loadParkedTicketsCount() {
+    try {
+        const res = await apiFetch('/api/pos/parked-tickets');
+        if (res.success) {
+            const badge = document.getElementById('parked-count-badge');
+            if (badge) badge.innerText = res.parked_tickets.length;
+        }
+    } catch (e) {}
+}
+
+async function openParkedTicketsModal() {
+    const listEl = document.getElementById('parked-tickets-list');
+    listEl.innerHTML = '<div class="text-center py-4 text-gray-500 font-medium">Cargando ventas pausadas...</div>';
+    document.getElementById('modal-parked-tickets').classList.remove('hidden');
+
+    try {
+        const res = await apiFetch('/api/pos/parked-tickets');
+        if (res.success && res.parked_tickets.length > 0) {
+            listEl.innerHTML = res.parked_tickets.map(t => {
+                const cartItems = JSON.parse(t.cart_json || '[]');
+                const total = cartItems.reduce((acc, i) => acc + (i.sale_price * i.quantity), 0);
+                return `
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between">
+                        <div>
+                            <div class="font-extrabold text-sm text-slate-900">${t.ticket_name}</div>
+                            <div class="text-xs text-gray-500">${cartItems.length} artículos | Total: <span class="font-bold text-amber-600">$${total.toFixed(2)}</span></div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="resumeParkedTicket(${t.id}, '${t.cart_json.replace(/'/g, "\\'")}')" class="px-3 py-1.5 bg-emerald-600 text-white font-bold text-xs rounded-xl shadow hover:bg-emerald-500">
+                                Reanudar ➡️
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        } else {
+            listEl.innerHTML = '<div class="text-center py-6 text-gray-400 font-bold text-sm">No hay ventas pausadas en espera.</div>';
+        }
+    } catch (e) {
+        listEl.innerHTML = '<div class="text-center py-4 text-rose-500 font-bold">Error al cargar ventas en espera.</div>';
+    }
+}
+
+function closeParkedTicketsModal() {
+    document.getElementById('modal-parked-tickets').classList.add('hidden');
+}
+
+async function resumeParkedTicket(parkedId, cartJsonStr) {
+    if (STATE.cart.length > 0) {
+        if (!confirm('Actualmente hay artículos en el carrito. ¿Desea reemplazarlos con la venta pausada?')) return;
+    }
+
+    try {
+        STATE.cart = JSON.parse(cartJsonStr);
+        updateCartUI();
+        await apiFetch('/api/pos/delete-parked-ticket', {
+            method: 'POST',
+            body: JSON.stringify({ parked_id: parkedId })
+        });
+        closeParkedTicketsModal();
+        loadParkedTicketsCount();
+    } catch (e) {
+        alert('Error al reanudar venta.');
+    }
+}
+
+// Teclas Rápidas F1-F12 (Eleventa Style)
+window.addEventListener('keydown', (e) => {
+    if (STATE.currentView !== 'pos') return;
+
+    if (e.key === 'F2') {
+        e.preventDefault();
+        const searchInput = document.getElementById('pos-search-input');
+        if (searchInput) searchInput.focus();
+    } else if (e.key === 'F4') {
+        e.preventDefault();
+        const custSelect = document.getElementById('checkout-customer-select');
+        if (custSelect) custSelect.focus();
+    } else if (e.key === 'F8') {
+        e.preventDefault();
+        handleParkCurrentCart();
+    } else if (e.key === 'F12') {
+        e.preventDefault();
+        if (STATE.cart.length > 0) {
+            openCheckoutModal();
+        }
+    }
+});

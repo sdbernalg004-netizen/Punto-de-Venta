@@ -242,3 +242,14 @@ CREATE TABLE IF NOT EXISTS purchase_order_items (
     quantity REAL NOT NULL,
     unit_cost REAL NOT NULL
 );
+
+-- 18. Ventas en Espera / Parked Tickets (Inspirado en Eleventa y SICAR)
+CREATE TABLE IF NOT EXISTS parked_tickets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    branch_id INTEGER NOT NULL REFERENCES branches(id),
+    cashier_id INTEGER NOT NULL REFERENCES users(id),
+    customer_id INTEGER REFERENCES customers(id),
+    ticket_name VARCHAR(100),
+    cart_json TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);

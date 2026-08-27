@@ -350,9 +350,62 @@ function getTicketDetails(req, res) {
     }
 }
 
+/**
+ * Poner Venta en Espera (Parked Ticket - Eleventa / SICAR Style)
+ */
+function parkTicket(req, res) {
+    try {
+        const { cart, ticket_name, customer_id } = req.body;
+        const branchId = req.user.branch_id || 1;
+        const cashierId = req.user.id;
+
+        if (!cart || !Array.isArray(cart) || cart.length === 0) {
+            return res.status(400).json({ success: false, message: 'El carrito está vacío.' });
+        }
+
+        const nameToUse = ticket_name || `Ticket #${Date.now().toString().slice(-4)}`;
+        const stmt = db.prepare('INSERT INTO parked_tickets (branch_id, cashier_id, customer_id, ticket_name, cart_json) VALUES (?, ?, ?, ?, ?)');
+        const result = stmt.run(branchId, cashierId, customer_id || null, nameToUse, JSON.stringify(cart));
+
+        res.json({ success: true, message: `Venta "${nameToUse}" puesta en espera.`, parked_id: result.lastInsertRowid });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Error al poner venta en espera.' });
+    }
+}
+
+function getParkedTickets(req, res) {
+    try {
+        const branchId = req.user.branch_id || 1;
+        const tickets = db.prepare(`
+            SELECT pt.*, c.name as customer_name
+            FROM parked_tickets pt
+            LEFT JOIN customers c ON pt.customer_id = c.id
+            WHERE pt.branch_id = ?
+            ORDER BY pt.id DESC
+        `).all(branchId);
+
+        res.json({ success: true, parked_tickets: tickets });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Error al consultar ventas en espera.' });
+    }
+}
+
+function deleteParkedTicket(req, res) {
+    try {
+        const { parked_id } = req.body;
+        db.prepare('DELETE FROM parked_tickets WHERE id = ?').run(parked_id);
+        res.json({ success: true, message: 'Venta en espera liberada.' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Error al eliminar venta en espera.' });
+    }
+}
+
 module.exports = {
     searchProducts,
     checkout,
     voidTicket,
-    getTicketDetails
+    getTicketDetails,
+    parkTicket,
+    getParkedTickets,
+    deleteParkedTicket
 };

@@ -62,6 +62,9 @@ app.get('/api/pos/products', authenticateToken, scopeBranch, posController.searc
 app.post('/api/pos/checkout', authenticateToken, posController.checkout);
 app.post('/api/pos/void-ticket', authenticateToken, verifyManagerPin, posController.voidTicket);
 app.get('/api/pos/ticket/:ticket_number', authenticateToken, posController.getTicketDetails);
+app.post('/api/pos/park-ticket', authenticateToken, posController.parkTicket);
+app.get('/api/pos/parked-tickets', authenticateToken, posController.getParkedTickets);
+app.post('/api/pos/delete-parked-ticket', authenticateToken, posController.deleteParkedTicket);
 
 // 3. Inventario & Sucursales
 app.get('/api/inventory', authenticateToken, scopeBranch, inventoryController.getInventory);
