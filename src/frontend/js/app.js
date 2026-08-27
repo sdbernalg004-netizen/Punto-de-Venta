@@ -142,7 +142,9 @@ async function handleLogin(e) {
             STATE.user = res.user;
             localStorage.setItem('pos_token', res.token);
             localStorage.setItem('pos_user', JSON.stringify(res.user));
+            
             document.getElementById('modal-login').classList.add('hidden');
+            document.getElementById('app-layout').classList.remove('hidden');
             updateUserUI();
             switchView('pos');
         } else {
@@ -158,6 +160,7 @@ function logout() {
     localStorage.removeItem('pos_user');
     STATE.token = null;
     STATE.user = null;
+    document.getElementById('app-layout').classList.add('hidden');
     document.getElementById('modal-login').classList.remove('hidden');
 }
 
@@ -177,14 +180,25 @@ function toggleSidebar() {
     document.getElementById('sidebar').classList.toggle('hidden');
 }
 
-// Inicialización de App
-window.addEventListener('DOMContentLoaded', () => {
+// Inicialización de App con Carga Instantánea de Login
+window.addEventListener('DOMContentLoaded', async () => {
     initWebSocket();
     if (!STATE.token) {
+        document.getElementById('app-layout').classList.add('hidden');
         document.getElementById('modal-login').classList.remove('hidden');
     } else {
-        document.getElementById('modal-login').classList.add('hidden');
-        updateUserUI();
-        switchView('pos');
+        try {
+            const meRes = await apiFetch('/api/auth/me');
+            if (meRes.success) {
+                document.getElementById('modal-login').classList.add('hidden');
+                document.getElementById('app-layout').classList.remove('hidden');
+                updateUserUI();
+                switchView('pos');
+            } else {
+                logout();
+            }
+        } catch (e) {
+            logout();
+        }
     }
 });

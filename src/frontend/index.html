@@ -14,10 +14,12 @@
     <script src="https://unpkg.com/html5-qrcode"></script>
     <link rel="stylesheet" href="css/custom.css">
 </head>
-<body class="bg-gray-100 font-sans antialiased text-gray-800 flex h-screen overflow-hidden">
+<body class="bg-slate-950 font-sans antialiased text-gray-800 flex h-screen overflow-hidden">
 
-    <!-- BARRA LATERAL (NAVBAR RECTANGULAR RESPONSIVO) -->
-    <aside id="sidebar" class="bg-slate-900 text-white w-64 flex flex-col justify-between flex-shrink-0 transition-all duration-300 hidden md:flex">
+    <!-- CONTENEDOR DEL SISTEMA (OCULTO HASTA QUE SE INICIE SESIÓN) -->
+    <div id="app-layout" class="w-full h-screen flex overflow-hidden bg-gray-100 hidden">
+        <!-- BARRA LATERAL (NAVBAR RECTANGULAR RESPONSIVO) -->
+        <aside id="sidebar" class="bg-slate-900 text-white w-64 flex flex-col justify-between flex-shrink-0 transition-all duration-300 hidden md:flex">
         <div>
             <!-- LOGO & TITULO -->
             <div class="p-4 bg-slate-950 flex items-center gap-3 border-b border-slate-800">
@@ -310,6 +312,7 @@
 
         </div>
     </main>
+    </div> <!-- FIN DE #app-layout -->
 
     <!-- MODAL DE LOGIN -->
     <div id="modal-login" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
