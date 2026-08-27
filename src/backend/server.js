@@ -50,8 +50,10 @@ app.set('broadcastWS', broadcastWS);
 
 // ------------------- RUTAS DE LA API -------------------
 
-// 1. Autenticación
+// 1. Autenticación, Registro de Empresa y Personal
 app.post('/api/auth/login', authController.login);
+app.post('/api/auth/register-tenant', authController.registerTenant);
+app.post('/api/auth/add-staff', authenticateToken, requireRole('ADMIN', 'MANAGER'), authController.addStaff);
 app.post('/api/auth/verify-pin', authController.verifyPin);
 app.get('/api/auth/me', authenticateToken, authController.getMe);
 

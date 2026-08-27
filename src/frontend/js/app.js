@@ -155,6 +155,55 @@ async function handleLogin(e) {
     }
 }
 
+// Modal Registro de Nueva Empresa / Sucursal
+function openRegisterModal() {
+    document.getElementById('modal-login').classList.add('hidden');
+    document.getElementById('modal-register').classList.remove('hidden');
+}
+
+function closeRegisterModal() {
+    document.getElementById('modal-register').classList.add('hidden');
+    document.getElementById('modal-login').classList.remove('hidden');
+}
+
+async function handleRegisterTenant(e) {
+    e.preventDefault();
+    const payload = {
+        branch_name: document.getElementById('reg-branch-name').value.trim(),
+        branch_code: document.getElementById('reg-branch-code').value.trim(),
+        branch_address: document.getElementById('reg-branch-address').value.trim(),
+        branch_phone: document.getElementById('reg-branch-phone').value.trim(),
+        owner_name: document.getElementById('reg-owner-name').value.trim(),
+        owner_username: document.getElementById('reg-owner-username').value.trim(),
+        owner_password: document.getElementById('reg-owner-password').value.trim(),
+        owner_pin: document.getElementById('reg-owner-pin').value.trim() || '1234'
+    };
+
+    try {
+        const res = await apiFetch('/api/auth/register-tenant', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+
+        if (res.success) {
+            alert(`🎉 ${res.message}`);
+            STATE.token = res.token;
+            STATE.user = res.user;
+            localStorage.setItem('pos_token', res.token);
+            localStorage.setItem('pos_user', JSON.stringify(res.user));
+            
+            document.getElementById('modal-register').classList.add('hidden');
+            document.getElementById('app-layout').classList.remove('hidden');
+            updateUserUI();
+            switchView('pos');
+        } else {
+            alert(res.message);
+        }
+    } catch (err) {
+        alert(err.message || 'Error al registrar empresa.');
+    }
+}
+
 function logout() {
     localStorage.removeItem('pos_token');
     localStorage.removeItem('pos_user');
