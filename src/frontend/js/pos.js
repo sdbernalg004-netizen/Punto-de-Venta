@@ -1,20 +1,19 @@
 /**
- * LÓGICA DEL PUNTO DE VENTA (POS), CARRITO, TECLADO Y ESCÁNER
+ * LÓGICA DEL PUNTO DE VENTA (POS), CARRITO, MAYOREO, COMBOS Y PUNTOS
  */
 
 let posProductsList = [];
+let customerList = [];
 let barcodeBuffer = '';
 let lastKeyTime = Date.now();
 
 // Listener para Escáner de Código de Barras USB (Keyboard Wedge)
 window.addEventListener('keydown', (e) => {
-    // Si estamos escribiendo en un input normal, no interceptar
     if (document.activeElement.tagName === 'INPUT' && document.activeElement.id !== 'pos-search-input') {
         return;
     }
 
     const currentTime = Date.now();
-    // Los escáneres USB envían teclas con menos de 30ms de intervalo
     if (currentTime - lastKeyTime > 50) {
         barcodeBuffer = '';
     }
@@ -39,12 +38,23 @@ async function loadPOSProducts(categoryId = null) {
         const res = await apiFetch(url);
         if (res.success) {
             posProductsList = res.products;
+            customerList = res.customers || [];
             renderPOSProductsGrid(posProductsList);
             renderCategoryPills();
+            renderCustomerDropdown();
         }
     } catch (error) {
         console.error('Error al cargar productos:', error);
     }
+}
+
+function renderCustomerDropdown() {
+    const select = document.getElementById('checkout-customer-select');
+    if (!select) return;
+
+    select.innerHTML = '<option value="">-- Cliente General --</option>' + customerList.map(c => `
+        <option value="${c.id}">${c.name} (${c.points_balance || 0} Puntos | Bal: $${c.current_balance.toFixed(2)})</option>
+    `).join('');
 }
 
 function renderCategoryPills() {
@@ -71,21 +81,27 @@ function renderPOSProductsGrid(products) {
         return;
     }
 
-    grid.innerHTML = products.map(p => `
-        <div onclick="addToCart(${p.id})" class="product-card bg-white p-3 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md cursor-pointer flex flex-col justify-between h-36">
-            <div>
-                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 uppercase">${p.unit_type}</span>
-                <h4 class="font-bold text-xs text-slate-800 line-clamp-2 mt-1">${p.name}</h4>
+    grid.innerHTML = products.map(p => {
+        const isCombo = p.is_combo === 1;
+        const hasMayoreo = p.tiers && p.tiers.length > 0;
+
+        return `
+            <div onclick="addToCart(${p.id})" class="product-card bg-white p-3 rounded-2xl border ${isCombo ? 'border-amber-400 bg-amber-50/30' : 'border-gray-200'} shadow-sm hover:shadow-md cursor-pointer flex flex-col justify-between h-36 relative">
+                ${isCombo ? '<span class="absolute -top-2 -right-2 bg-amber-500 text-slate-950 text-[9px] font-black px-2 py-0.5 rounded-full shadow">COMBO / KIT</span>' : ''}
+                ${hasMayoreo ? '<span class="absolute -top-2 -left-2 bg-emerald-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full shadow">MAYOREO</span>' : ''}
+                <div>
+                    <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 uppercase">${p.unit_type}</span>
+                    <h4 class="font-bold text-xs text-slate-800 line-clamp-2 mt-1">${p.name}</h4>
+                </div>
+                <div>
+                    <div class="text-[11px] text-gray-400 font-semibold">Stock: ${p.stock_quantity}</div>
+                    <div class="text-base font-black text-amber-600">$${p.sale_price.toFixed(2)}</div>
+                </div>
             </div>
-            <div>
-                <div class="text-[11px] text-gray-400 font-semibold">Stock: ${p.stock_quantity}</div>
-                <div class="text-base font-black text-amber-600">$${p.sale_price.toFixed(2)}</div>
-            </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
-// Búsqueda en vivo al escribir en input
 document.getElementById('pos-search-input')?.addEventListener('input', (e) => {
     const term = e.target.value.toLowerCase().trim();
     if (!term) {
@@ -118,7 +134,6 @@ function addToCart(productId) {
     const existingIndex = STATE.cart.findIndex(item => item.product_id === productId);
 
     if (product.is_weighted) {
-        // Venta a granel / Peso (alimento o materias primas)
         const qtyStr = prompt(`Ingrese la cantidad en ${product.unit_type} para "${product.name}":`, '1.0');
         const qty = parseFloat(qtyStr);
         if (isNaN(qty) || qty <= 0) return;
@@ -126,13 +141,29 @@ function addToCart(productId) {
         if (existingIndex > -1) {
             STATE.cart[existingIndex].quantity += qty;
         } else {
-            STATE.cart.push({ product_id: product.id, name: product.name, unit_price: product.sale_price, quantity: qty, unit_type: product.unit_type });
+            STATE.cart.push({ 
+                product_id: product.id, 
+                name: product.name, 
+                unit_price: product.sale_price, 
+                quantity: qty, 
+                unit_type: product.unit_type,
+                tiers: product.tiers || [],
+                is_combo: product.is_combo === 1
+            });
         }
     } else {
         if (existingIndex > -1) {
             STATE.cart[existingIndex].quantity += 1;
         } else {
-            STATE.cart.push({ product_id: product.id, name: product.name, unit_price: product.sale_price, quantity: 1, unit_type: product.unit_type });
+            STATE.cart.push({ 
+                product_id: product.id, 
+                name: product.name, 
+                unit_price: product.sale_price, 
+                quantity: 1, 
+                unit_type: product.unit_type,
+                tiers: product.tiers || [],
+                is_combo: product.is_combo === 1
+            });
         }
     }
 
@@ -178,14 +209,28 @@ function renderCart() {
 
     let subtotal = 0;
     container.innerHTML = STATE.cart.map((item, idx) => {
-        const itemTotal = item.unit_price * item.quantity;
+        let priceToUse = item.unit_price;
+        let tierAppliedLabel = '';
+
+        if (item.tiers && item.tiers.length > 0) {
+            const applicableTier = item.tiers.slice().reverse().find(t => item.quantity >= t.min_quantity && (item.quantity <= t.max_quantity || !t.max_quantity));
+            if (applicableTier) {
+                priceToUse = applicableTier.tiered_price;
+                tierAppliedLabel = `<span class="bg-emerald-100 text-emerald-800 text-[9px] font-bold px-1 rounded">Precio Mayoreo</span>`;
+            }
+        }
+
+        const itemTotal = priceToUse * item.quantity;
         subtotal += itemTotal;
 
         return `
-            <div class="py-2.5 flex items-center justify-between gap-2">
+            <div class="py-2.5 flex items-center justify-between gap-2 border-b border-gray-100">
                 <div class="flex-1">
-                    <h5 class="font-bold text-xs text-slate-800 leading-tight">${item.name}</h5>
-                    <span class="text-[11px] text-gray-400 font-semibold">$${item.unit_price.toFixed(2)} / ${item.unit_type}</span>
+                    <div class="flex items-center gap-1">
+                        <h5 class="font-bold text-xs text-slate-800 leading-tight">${item.name}</h5>
+                        ${tierAppliedLabel}
+                    </div>
+                    <span class="text-[11px] text-gray-400 font-semibold">$${priceToUse.toFixed(2)} / ${item.unit_type}</span>
                 </div>
                 <div class="flex items-center gap-1.5 bg-gray-100 rounded-lg p-1">
                     <button onclick="updateCartQty(${idx}, -1)" class="w-6 h-6 bg-white rounded flex items-center justify-center font-bold text-xs text-gray-700 shadow-sm">-</button>
@@ -233,6 +278,7 @@ async function confirmCheckout() {
     const method = document.getElementById('checkout-method').value;
     const total = parseFloat(document.getElementById('modal-checkout-total').innerText.replace('$', '')) || 0;
     const cashReceived = parseFloat(document.getElementById('checkout-cash-received').value) || 0;
+    const customerId = document.getElementById('checkout-customer-select')?.value || null;
 
     if (method === 'CASH' && cashReceived < total) {
         alert('El efectivo recibido es menor al monto total del ticket.');
@@ -243,7 +289,8 @@ async function confirmCheckout() {
         const payload = {
             items: STATE.cart,
             payment_method: method,
-            cash_received: cashReceived
+            cash_received: cashReceived,
+            customer_id: customerId
         };
 
         const res = await apiFetch('/api/pos/checkout', {

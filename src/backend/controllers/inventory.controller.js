@@ -1,5 +1,5 @@
 /**
- * CONTROLADOR DE GESTIÓN DE INVENTARIOS Y TRANSFERENCIAS INTER-SUCURSALES
+ * CONTROLADOR DE GESTIÓN DE INVENTARIOS, COMBOS, TRANSFERENCIAS Y ÓRDENES DE COMPRA
  */
 
 const { db } = require('../config/database');
@@ -17,9 +17,8 @@ function getInventory(req, res) {
         const params = [];
 
         if (isAdmin && !branchId) {
-            // El Dueño ve el desglose de stock por cada sucursal y el stock total global
             sql = `
-                SELECT p.id as product_id, p.sku, p.barcode, p.name as product_name, p.unit_type, p.cost_price, p.sale_price, p.is_weighted,
+                SELECT p.id as product_id, p.sku, p.barcode, p.name as product_name, p.unit_type, p.cost_price, p.sale_price, p.is_weighted, p.is_combo,
                        c.name as category_name,
                        COALESCE(SUM(i.stock_quantity), 0) as stock_quantity,
                        COALESCE(MAX(CASE WHEN b.code = 'SUC-CENTRO' THEN i.stock_quantity END), 0) as stock_centro,
@@ -33,7 +32,7 @@ function getInventory(req, res) {
             `;
         } else {
             sql = `
-                SELECT p.id as product_id, p.sku, p.barcode, p.name as product_name, p.unit_type, p.cost_price, p.sale_price, p.is_weighted,
+                SELECT p.id as product_id, p.sku, p.barcode, p.name as product_name, p.unit_type, p.cost_price, p.sale_price, p.is_weighted, p.is_combo,
                        c.name as category_name, COALESCE(i.stock_quantity, 0) as stock_quantity, COALESCE(i.min_stock_alert, 10) as min_stock_alert
                 FROM products p
                 LEFT JOIN categories c ON p.category_id = c.id
@@ -64,7 +63,6 @@ function getInventory(req, res) {
 
         const inventory = db.prepare(sql).all(...params);
 
-        // Obtener Lotes próximos a vencer (FEFO)
         let expiringSql = `
             SELECT pb.*, p.name as product_name 
             FROM product_batches pb
@@ -79,11 +77,17 @@ function getInventory(req, res) {
         expiringSql += ` ORDER BY pb.expiration_date ASC`;
 
         const expiringBatches = db.prepare(expiringSql).all(...expiringParams);
-
-        // Obtener lista de sucursales para transferencias
         const branches = db.prepare('SELECT id, code, name FROM branches').all();
+        const suppliers = db.prepare('SELECT * FROM suppliers').all();
+        const purchaseOrders = db.prepare(`
+            SELECT po.*, s.name as supplier_name, b.name as branch_name 
+            FROM purchase_orders po
+            JOIN suppliers s ON po.supplier_id = s.id
+            JOIN branches b ON po.branch_id = b.id
+            ORDER BY po.id DESC
+        `).all();
 
-        res.json({ success: true, inventory, expiringBatches, branches });
+        res.json({ success: true, inventory, expiringBatches, branches, suppliers, purchaseOrders });
     } catch (error) {
         console.error('Error al obtener inventario:', error);
         res.status(500).json({ success: false, message: 'Error interno al consultar inventario.' });
@@ -91,7 +95,7 @@ function getInventory(req, res) {
 }
 
 /**
- * Ajuste Manual de Inventario (Requiere PIN de Gerente / Administrador)
+ * Ajuste Manual de Inventario
  */
 function updateStock(req, res) {
     try {
@@ -100,7 +104,7 @@ function updateStock(req, res) {
         const targetBranch = branch_id || req.user.branch_id;
 
         if (!product_id || !targetBranch || new_quantity === undefined || !reason) {
-            return res.status(400).json({ success: false, message: 'Faltan parámetros requeridos (producto, sucursal, cantidad, motivo).' });
+            return res.status(400).json({ success: false, message: 'Faltan parámetros requeridos.' });
         }
 
         const prevInv = db.prepare('SELECT stock_quantity FROM inventory WHERE branch_id = ? AND product_id = ?').get(targetBranch, product_id);
@@ -112,7 +116,6 @@ function updateStock(req, res) {
             ON CONFLICT(branch_id, product_id) DO UPDATE SET stock_quantity = ?, updated_at = CURRENT_TIMESTAMP
         `).run(targetBranch, product_id, new_quantity, new_quantity);
 
-        // Registrar en Auditoría Anti-Fraude
         db.prepare('INSERT INTO audit_logs (branch_id, user_id, action, details) VALUES (?, ?, ?, ?)').run(
             targetBranch, managerUser.id, 'INVENTORY_ADJUSTMENT', 
             `Ajuste manual de producto ID ${product_id}. Cantidad previa: ${oldQty}, Nueva: ${new_quantity}. Motivo: ${reason}`
@@ -129,7 +132,7 @@ function updateStock(req, res) {
 }
 
 /**
- * Cambiar Precio de un Producto en Tiempo Real (Requiere PIN de Gerente / Dueño)
+ * Cambiar Precio de un Producto en Tiempo Real
  */
 function updatePrice(req, res) {
     try {
@@ -149,13 +152,11 @@ function updatePrice(req, res) {
         db.prepare('UPDATE products SET cost_price = ?, sale_price = ? WHERE id = ?')
             .run(costToSet, saleToSet, product_id);
 
-        // Bitácora de Auditoría
         db.prepare('INSERT INTO audit_logs (branch_id, user_id, action, details) VALUES (?, ?, ?, ?)').run(
             req.user.branch_id || null, managerUser.id, 'PRICE_CHANGED',
             `Precio modificado para "${oldProduct.name}". Venta previa: $${oldProduct.sale_price}, Nuevo: $${saleToSet}`
         );
 
-        // Notificar en tiempo real a todas las cajas/POS conectados por WebSockets
         if (req.app.get('broadcastWS')) {
             req.app.get('broadcastWS')({ type: 'INVENTORY_UPDATED', product_id, new_sale_price: saleToSet });
         }
@@ -167,8 +168,106 @@ function updatePrice(req, res) {
 }
 
 /**
- * Registrar un nuevo Producto en el Catálogo Maestro
+ * Generación Automática de Orden de Compra a Proveedores (*Supplier PO System*)
  */
+function generateAutoPO(req, res) {
+    try {
+        const { supplier_id, branch_id } = req.body;
+        const targetBranch = branch_id || req.user.branch_id || 1;
+
+        if (!supplier_id) {
+            return res.status(400).json({ success: false, message: 'Seleccione un proveedor.' });
+        }
+
+        // Buscar productos con stock bajo
+        const lowStockItems = db.prepare(`
+            SELECT p.id as product_id, p.name, p.cost_price, i.stock_quantity, i.min_stock_alert
+            FROM products p
+            JOIN inventory i ON p.id = i.product_id AND i.branch_id = ?
+            WHERE i.stock_quantity <= i.min_stock_alert AND p.is_active = 1
+        `).all(targetBranch);
+
+        if (lowStockItems.length === 0) {
+            return res.status(400).json({ success: false, message: 'No hay productos con stock bajo en esta sucursal.' });
+        }
+
+        const poCode = `PO-${Date.now()}`;
+        let totalCost = 0;
+
+        const poTx = db.transaction(() => {
+            const poStmt = db.prepare(`
+                INSERT INTO purchase_orders (po_code, supplier_id, branch_id, status, total_cost)
+                VALUES (?, ?, ?, 'DRAFT', 0)
+            `);
+            const poRes = poStmt.run(poCode, supplier_id, targetBranch);
+            const poId = poRes.lastInsertRowid;
+
+            const insertPoItem = db.prepare('INSERT INTO purchase_order_items (po_id, product_id, quantity, unit_cost) VALUES (?, ?, ?, ?)');
+
+            for (const item of lowStockItems) {
+                const suggestedQty = Math.max(20, item.min_stock_alert * 3 - item.stock_quantity);
+                const itemCost = suggestedQty * item.cost_price;
+                totalCost += itemCost;
+                insertPoItem.run(poId, item.product_id, suggestedQty, item.cost_price);
+            }
+
+            db.prepare('UPDATE purchase_orders SET total_cost = ? WHERE id = ?').run(totalCost, poId);
+
+            db.prepare('INSERT INTO audit_logs (branch_id, user_id, action, details) VALUES (?, ?, ?, ?)').run(
+                targetBranch, req.user.id, 'PO_GENERATED', `Orden de Compra ${poCode} generada para Proveedor ID ${supplier_id} por $${totalCost.toFixed(2)}`
+            );
+
+            return poCode;
+        });
+
+        const code = poTx();
+        res.json({ success: true, message: `Orden de Compra ${code} creada exitosamente.`, po_code: code });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Error al generar Orden de Compra.' });
+    }
+}
+
+/**
+ * Recepción e Ingreso de Orden de Compra a Inventario
+ */
+function receivePO(req, res) {
+    try {
+        const { po_id } = req.body;
+        const po = db.prepare('SELECT * FROM purchase_orders WHERE id = ? AND status != "RECEIVED"').get(po_id);
+        if (!po) return res.status(404).json({ success: false, message: 'Orden de compra no encontrada o ya recibida.' });
+
+        const receiveTx = db.transaction(() => {
+            const items = db.prepare('SELECT * FROM purchase_order_items WHERE po_id = ?').all(po_id);
+            const addInv = db.prepare(`
+                INSERT INTO inventory (branch_id, product_id, stock_quantity) VALUES (?, ?, ?)
+                ON CONFLICT(branch_id, product_id) DO UPDATE SET stock_quantity = stock_quantity + ?
+            `);
+
+            for (const item of items) {
+                addInv.run(po.branch_id, item.product_id, item.quantity, item.quantity);
+            }
+
+            db.prepare('UPDATE purchase_orders SET status = "RECEIVED", received_at = CURRENT_TIMESTAMP WHERE id = ?').run(po_id);
+
+            db.prepare('INSERT INTO audit_logs (branch_id, user_id, action, details) VALUES (?, ?, ?, ?)').run(
+                po.branch_id, req.user.id, 'PO_RECEIVED', `Orden de Compra ${po.po_code} recibida. Inventario incrementado.`
+            );
+        });
+
+        receiveTx();
+
+        if (req.app.get('broadcastWS')) {
+            req.app.get('broadcastWS')({ type: 'INVENTORY_UPDATED' });
+        }
+
+        res.json({ success: true, message: `Orden de Compra ${po.po_code} recibida. Inventario actualizado.` });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Error al recibir Orden de Compra.' });
+    }
+}
+
 function addProduct(req, res) {
     try {
         const { sku, barcode, name, category_id, unit_type, cost_price, sale_price, is_weighted, quick_key } = req.body;
@@ -183,7 +282,6 @@ function addProduct(req, res) {
         `);
         const result = stmt.run(sku, barcode || null, name, category_id, unit_type || 'piece', cost_price || 0, sale_price, is_weighted ? 1 : 0, quick_key ? 1 : 0);
 
-        // Crear registro inicial de inventario 0 en todas las sucursales
         const branches = db.prepare('SELECT id FROM branches').all();
         const insertInv = db.prepare('INSERT INTO inventory (branch_id, product_id, stock_quantity) VALUES (?, ?, 0)');
         branches.forEach(b => insertInv.run(b.id, result.lastInsertRowid));
@@ -194,9 +292,6 @@ function addProduct(req, res) {
     }
 }
 
-/**
- * Crear Transferencia Inter-Sucursales
- */
 function createStockTransfer(req, res) {
     try {
         const { from_branch_id, to_branch_id, items, notes } = req.body;
@@ -248,9 +343,6 @@ function createStockTransfer(req, res) {
     }
 }
 
-/**
- * Recepción y Confirmación de Transferencia Inter-Sucursales
- */
 function receiveStockTransfer(req, res) {
     try {
         const { transfer_id } = req.body;
@@ -302,6 +394,8 @@ module.exports = {
     getInventory,
     updateStock,
     updatePrice,
+    generateAutoPO,
+    receivePO,
     addProduct,
     createStockTransfer,
     receiveStockTransfer

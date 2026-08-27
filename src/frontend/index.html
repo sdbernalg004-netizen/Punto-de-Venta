@@ -168,6 +168,9 @@
                         <input type="text" id="inv-search" placeholder="Buscar por SKU o nombre..." class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm">
                     </div>
                     <div class="flex gap-2">
+                        <button onclick="openAutoPOModal()" class="px-4 py-2 bg-emerald-600 text-white font-bold text-xs rounded-xl hover:bg-emerald-500 shadow">
+                            <i class="fa-solid fa-truck-field mr-1"></i> Orden a Proveedor (PO)
+                        </button>
                         <button onclick="openTransferModal()" class="px-4 py-2 bg-slate-800 text-white font-bold text-xs rounded-xl hover:bg-slate-700">
                             <i class="fa-solid fa-truck-ramp-box mr-1"></i> Transferir a Sucursal
                         </button>
@@ -427,6 +430,12 @@
             </div>
             <div class="space-y-4">
                 <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Cliente Frecuente (Puntos / Crédito)</label>
+                    <select id="checkout-customer-select" class="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-xs font-semibold">
+                        <option value="">-- Cliente General --</option>
+                    </select>
+                </div>
+                <div>
                     <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Método de Pago</label>
                     <select id="checkout-method" onchange="toggleCashInput()" class="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm font-semibold">
                         <option value="CASH">Efectivo</option>
@@ -450,6 +459,26 @@
                     </button>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE GENERACIÓN DE ORDEN DE COMPRA A PROVEEDOR (PO) -->
+    <div id="modal-auto-po" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl p-6 border border-gray-100">
+            <h3 class="text-lg font-black text-slate-900 mb-2">Generar Orden de Compra (PO)</h3>
+            <p class="text-xs text-gray-500 mb-4">Escanea automáticamente productos con stock bajo y genera la orden para el proveedor seleccionado.</p>
+            <form onsubmit="handleGenerateAutoPO(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Seleccionar Proveedor</label>
+                    <select id="auto-po-supplier-select" class="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-xs font-semibold">
+                        <!-- Carga dinámica -->
+                    </select>
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="closeAutoPOModal()" class="flex-1 py-2.5 bg-gray-200 text-gray-700 font-bold text-xs rounded-xl">Cancelar</button>
+                    <button type="submit" class="flex-1 py-2.5 bg-emerald-600 text-white font-extrabold text-xs rounded-xl shadow hover:bg-emerald-500">Generar Orden Sugerida</button>
+                </div>
+            </form>
         </div>
     </div>
 

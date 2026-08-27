@@ -1,18 +1,12 @@
 /**
- * CONTROLADOR DE PUNTO DE VENTA (POS) - TRANSACCIONALIDAD E INTEGRIDAD DE DATOS
- * -----------------------------------------------------------------------------
- * NOTA EDUCATIVA PARA PROGRAMADORES DE JAVA / C++ / PYTHON:
- * En C++ y Java, cuando realizas operaciones de transferencia de fondos o actualización de inventarios,
- * debes asegurar la propiedad ACID (Atomicidad, Consistencia, Aislamiento, Durabilidad).
- * Aquí usamos `db.transaction(() => { ... })()`. Better-SQLite3 ejecuta todo el bloque de código
- * dentro de un 'BEGIN EXCLUSIVE TRANSACTION' a nivel nativo. Si cualquier validación lanza un Error,
- * la base de datos realiza un ROLLBACK automático de TODOS los cambios (stock, ticket, movimientos de caja).
+ * CONTROLADOR DE PUNTO DE VENTA (POS) CON MÓDULOS AVANZADOS
+ * (Desglose de Combos, Precios por Mayoreo/Volumen y Fidelización por Puntos)
  */
 
 const { db, calculateTicketHash } = require('../config/database');
 
 /**
- * Búsqueda de Productos por Código de Barras, SKU o Nombre
+ * Búsqueda de Productos con Escala de Mayoreo y Puntos
  */
 function searchProducts(req, res) {
     try {
@@ -43,7 +37,25 @@ function searchProducts(req, res) {
         sql += ` ORDER BY p.name ASC LIMIT 50`;
 
         const products = db.prepare(sql).all(...params);
-        res.json({ success: true, products });
+
+        // Adjuntar escalas de mayoreo y componentes si es combo
+        const productsWithDetails = products.map(p => {
+            const tiers = db.prepare('SELECT * FROM product_tiered_prices WHERE product_id = ? ORDER BY min_quantity ASC').all(p.id);
+            let comboItems = [];
+            if (p.is_combo === 1) {
+                comboItems = db.prepare(`
+                    SELECT pc.quantity, item.name, item.unit_type
+                    FROM product_combos pc
+                    JOIN products item ON pc.item_product_id = item.id
+                    WHERE pc.combo_product_id = ?
+                `).all(p.id);
+            }
+            return { ...p, tiers, comboItems };
+        });
+
+        const customers = db.prepare('SELECT id, name, phone, points_balance, credit_limit, current_balance FROM customers').all();
+
+        res.json({ success: true, products: productsWithDetails, customers });
     } catch (error) {
         console.error('Error al buscar productos:', error);
         res.status(500).json({ success: false, message: 'Error en servidor al buscar productos.' });
@@ -51,11 +63,11 @@ function searchProducts(req, res) {
 }
 
 /**
- * Cobro de Ticket y Procesamiento de Venta (Transacción ACID Atomica + Hash SHA-256)
+ * Cobro de Ticket (Procesamiento Atómico ACID con Combos, Mayoreo y Puntos)
  */
 function checkout(req, res) {
     try {
-        const { items, payment_method, cash_received, customer_id, discount_amount = 0 } = req.body;
+        const { items, payment_method, cash_received, customer_id, discount_amount = 0, points_to_redeem = 0 } = req.body;
         const cashierId = req.user.id;
         const branchId = req.user.branch_id;
 
@@ -67,97 +79,147 @@ function checkout(req, res) {
             return res.status(400).json({ success: false, message: 'El carrito de compras está vacío.' });
         }
 
-        // 1. Verificar que el cajero tenga un turno de caja abierto
+        // 1. Verificar turno de caja abierto
         const activeShift = db.prepare("SELECT * FROM shifts WHERE cashier_id = ? AND branch_id = ? AND status = 'OPEN'").get(cashierId, branchId);
         if (!activeShift) {
             return res.status(400).json({ success: false, message: 'No hay un turno de caja abierto. Inicie turno con su caja inicial antes de cobrar.' });
         }
 
-        // 2. Ejecución dentro de una Transacción Atómica ACID
+        // 2. Ejecución dentro de Transacción Atómica ACID
         const executeCheckoutTransaction = db.transaction(() => {
             let subtotal = 0;
             const itemsToProcess = [];
 
-            // A. Verificar existencias y calcular subtotales
             for (const item of items) {
                 const product = db.prepare('SELECT * FROM products WHERE id = ? AND is_active = 1').get(item.product_id);
                 if (!product) {
                     throw new Error(`El producto ID ${item.product_id} no existe o fue desactivado.`);
                 }
 
-                const inv = db.prepare('SELECT stock_quantity FROM inventory WHERE branch_id = ? AND product_id = ?').get(branchId, item.product_id);
-                const currentStock = inv ? inv.stock_quantity : 0;
+                // A. MÓDULO MAYOREO: Determinar precio unitario según escala de volumen
+                let unitPriceToUse = product.sale_price;
+                const tier = db.prepare(`
+                    SELECT tiered_price FROM product_tiered_prices
+                    WHERE product_id = ? AND ? >= min_quantity AND (? <= max_quantity OR max_quantity IS NULL)
+                    ORDER BY min_quantity DESC LIMIT 1
+                `).get(product.id, item.quantity, item.quantity);
 
-                if (currentStock < item.quantity) {
-                    throw new Error(`Stock insuficiente para "${product.name}". Solicitado: ${item.quantity}, Disponible: ${currentStock}`);
+                if (tier) {
+                    unitPriceToUse = tier.tiered_price;
                 }
 
-                const itemSubtotal = product.sale_price * item.quantity;
+                const itemSubtotal = unitPriceToUse * item.quantity;
                 subtotal += itemSubtotal;
+
+                // B. MÓDULO COMBOS: Verificar stock si es un producto individual o combo
+                if (product.is_combo === 1) {
+                    const components = db.prepare('SELECT * FROM product_combos WHERE combo_product_id = ?').all(product.id);
+                    if (components.length === 0) {
+                        throw new Error(`El combo "${product.name}" no tiene componentes asignados.`);
+                    }
+
+                    for (const comp of components) {
+                        const requiredQty = comp.quantity * item.quantity;
+                        const compInv = db.prepare('SELECT stock_quantity FROM inventory WHERE branch_id = ? AND product_id = ?').get(branchId, comp.item_product_id);
+                        const compStock = compInv ? compInv.stock_quantity : 0;
+
+                        if (compStock < requiredQty) {
+                            const compProd = db.prepare('SELECT name FROM products WHERE id = ?').get(comp.item_product_id);
+                            throw new Error(`Stock insuficiente de componente "${compProd.name}" para el combo "${product.name}". Requerido: ${requiredQty}, Disponible: ${compStock}`);
+                        }
+                    }
+                } else {
+                    const inv = db.prepare('SELECT stock_quantity FROM inventory WHERE branch_id = ? AND product_id = ?').get(branchId, item.product_id);
+                    const currentStock = inv ? inv.stock_quantity : 0;
+                    if (currentStock < item.quantity) {
+                        throw new Error(`Stock insuficiente para "${product.name}". Solicitado: ${item.quantity}, Disponible: ${currentStock}`);
+                    }
+                }
 
                 itemsToProcess.push({
                     product,
                     quantity: item.quantity,
-                    unit_price: product.sale_price,
+                    unit_price: unitPriceToUse,
                     subtotal: itemSubtotal
                 });
             }
 
-            const totalAmount = Math.max(0, subtotal - discount_amount);
+            // MÓDULO FIDELIZACIÓN: Descuento por canje de puntos (10 puntos = $10 pesos)
+            let pointsDiscount = 0;
+            if (customer_id && points_to_redeem > 0) {
+                const customer = db.prepare('SELECT points_balance FROM customers WHERE id = ?').get(customer_id);
+                if (customer && customer.points_balance >= points_to_redeem) {
+                    pointsDiscount = points_to_redeem * 1.0;
+                    db.prepare('UPDATE customers SET points_balance = points_balance - ? WHERE id = ?').run(points_to_redeem, customer_id);
+                }
+            }
+
+            const totalDiscount = discount_amount + pointsDiscount;
+            const totalAmount = Math.max(0, subtotal - totalDiscount);
             const changeGiven = payment_method === 'CASH' ? Math.max(0, cash_received - totalAmount) : 0;
 
-            // B. Generar Folio Secuencial de Ticket
+            // Folio e Inmutabilidad SHA-256
             const countSales = db.prepare('SELECT COUNT(*) as count FROM sales WHERE branch_id = ?').get(branchId).count;
             const branchCode = db.prepare('SELECT code FROM branches WHERE id = ?').get(branchId).code;
             const ticketNumber = `TK-${branchCode}-${String(countSales + 1).padStart(6, '0')}`;
 
-            // C. Obtener el Hash del Ticket Anterior para encadenamiento criptográfico
             const lastSale = db.prepare('SELECT ticket_hash FROM sales ORDER BY id DESC LIMIT 1').get();
             const previousHash = lastSale ? lastSale.ticket_hash : 'GENESIS_HASH';
             const createdAt = new Date().toISOString();
             const ticketHash = calculateTicketHash(ticketNumber, totalAmount, createdAt, previousHash);
 
-            // D. Insertar Registro de Venta
             const saleStmt = db.prepare(`
                 INSERT INTO sales 
-                (ticket_number, branch_id, shift_id, cashier_id, customer_id, subtotal, discount_amount, total_amount, payment_method, cash_received, change_given, previous_hash, ticket_hash, status, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'COMPLETED', ?)
+                (ticket_number, branch_id, shift_id, cashier_id, customer_id, subtotal, discount_amount, points_redeemed, total_amount, payment_method, cash_received, change_given, previous_hash, ticket_hash, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'COMPLETED', ?)
             `);
             const saleResult = saleStmt.run(
                 ticketNumber, branchId, activeShift.id, cashierId, customer_id || null, 
-                subtotal, discount_amount, totalAmount, payment_method, cash_received || 0, changeGiven, 
+                subtotal, totalDiscount, points_to_redeem || 0, totalAmount, payment_method, cash_received || 0, changeGiven, 
                 previousHash, ticketHash, createdAt
             );
             const saleId = saleResult.lastInsertRowid;
 
-            // E. Insertar Detalles de los Artículos y Descontar Inventario (FEFO)
+            // Descontar inventario de cada artículo (o componentes si es combo)
             const insertItemStmt = db.prepare('INSERT INTO sale_items (sale_id, product_id, product_name, unit_price, quantity, subtotal, batch_id) VALUES (?, ?, ?, ?, ?, ?, ?)');
             const updateInvStmt = db.prepare('UPDATE inventory SET stock_quantity = stock_quantity - ?, updated_at = CURRENT_TIMESTAMP WHERE branch_id = ? AND product_id = ?');
 
             for (const item of itemsToProcess) {
-                // Descontar del Lote más próximo a vencer si aplica (FEFO)
-                const activeBatch = db.prepare(`
-                    SELECT id FROM product_batches 
-                    WHERE product_id = ? AND branch_id = ? AND current_quantity > 0 
-                    ORDER BY expiration_date ASC LIMIT 1
-                `).get(item.product.id, branchId);
+                if (item.product.is_combo === 1) {
+                    const components = db.prepare('SELECT * FROM product_combos WHERE combo_product_id = ?').all(item.product.id);
+                    for (const comp of components) {
+                        const qtyToDeduct = comp.quantity * item.quantity;
+                        updateInvStmt.run(qtyToDeduct, branchId, comp.item_product_id);
+                    }
+                } else {
+                    const activeBatch = db.prepare(`
+                        SELECT id FROM product_batches 
+                        WHERE product_id = ? AND branch_id = ? AND current_quantity > 0 
+                        ORDER BY expiration_date ASC LIMIT 1
+                    `).get(item.product.id, branchId);
 
-                let batchId = null;
-                if (activeBatch) {
-                    batchId = activeBatch.id;
-                    db.prepare('UPDATE product_batches SET current_quantity = MAX(0, current_quantity - ?) WHERE id = ?').run(item.quantity, batchId);
+                    let batchId = null;
+                    if (activeBatch) {
+                        batchId = activeBatch.id;
+                        db.prepare('UPDATE product_batches SET current_quantity = MAX(0, current_quantity - ?) WHERE id = ?').run(item.quantity, batchId);
+                    }
+
+                    updateInvStmt.run(item.quantity, branchId, item.product.id);
+                    insertItemStmt.run(saleId, item.product.id, item.product.name, item.unit_price, item.quantity, item.subtotal, batchId);
                 }
-
-                insertItemStmt.run(saleId, item.product.id, item.product.name, item.unit_price, item.quantity, item.subtotal, batchId);
-                updateInvStmt.run(item.quantity, branchId, item.product.id);
             }
 
-            // F. Actualizar saldo del cliente si fue pago a Crédito (Fiado)
-            if (payment_method === 'CREDIT' && customer_id) {
-                db.prepare('UPDATE customers SET current_balance = current_balance + ? WHERE id = ?').run(totalAmount, customer_id);
+            // Acumular Puntos de Fidelidad (1 punto por cada $10 gastados)
+            if (customer_id) {
+                const pointsEarned = Math.floor(totalAmount / 10.0);
+                db.prepare('UPDATE customers SET points_balance = points_balance + ?, last_purchase_date = CURRENT_TIMESTAMP WHERE id = ?').run(pointsEarned, customer_id);
+
+                if (payment_method === 'CREDIT') {
+                    db.prepare('UPDATE customers SET current_balance = current_balance + ? WHERE id = ?').run(totalAmount, customer_id);
+                }
             }
 
-            // G. Auditoría Anti-Fraude: Verificar límite de efectivo acumulado en el cajón de la sucursal
+            // Límite de Efectivo en Caja y Auditoría
             const branchInfo = db.prepare('SELECT max_cash_drawer_limit FROM branches WHERE id = ?').get(branchId);
             const totalCashInShift = db.prepare(`
                 SELECT (
@@ -180,7 +242,6 @@ function checkout(req, res) {
                 );
             }
 
-            // H. Registro de Auditoría
             db.prepare('INSERT INTO audit_logs (branch_id, user_id, action, details) VALUES (?, ?, ?, ?)').run(
                 branchId, cashierId, 'SALE_CHECKOUT', `Venta cobrada ${ticketNumber} por $${totalAmount.toFixed(2)} [${payment_method}]`
             );
@@ -198,7 +259,6 @@ function checkout(req, res) {
 
         const result = executeCheckoutTransaction();
 
-        // Notificar en tiempo real mediante WebSockets si hay clientes conectados
         if (req.app.get('broadcastWS')) {
             req.app.get('broadcastWS')({ type: 'SALE_COMPLETED', branch_id: branchId, sale_id: result.sale_id });
         }
@@ -215,9 +275,6 @@ function checkout(req, res) {
     }
 }
 
-/**
- * Anulación de Ticket con Requerimiento de PIN de Gerente Anti-Fraude
- */
 function voidTicket(req, res) {
     try {
         const { ticket_number, reason } = req.body;
@@ -233,7 +290,6 @@ function voidTicket(req, res) {
                 throw new Error('El ticket no existe o ya se encuentra anulado.');
             }
 
-            // Revertir inventario
             const items = db.prepare('SELECT * FROM sale_items WHERE sale_id = ?').all(sale.id);
             for (const item of items) {
                 db.prepare('UPDATE inventory SET stock_quantity = stock_quantity + ? WHERE branch_id = ? AND product_id = ?')
@@ -245,19 +301,16 @@ function voidTicket(req, res) {
                 }
             }
 
-            // Marcar ticket como ANULADO
             db.prepare(`
                 UPDATE sales 
                 SET status = 'VOIDED', void_approved_by = ?, void_reason = ? 
                 WHERE id = ?
             `).run(managerUser.id, reason, sale.id);
 
-            // Si fue a crédito, descontar saldo del cliente
             if (sale.payment_method === 'CREDIT' && sale.customer_id) {
                 db.prepare('UPDATE customers SET current_balance = MAX(0, current_balance - ?) WHERE id = ?').run(sale.total_amount, sale.customer_id);
             }
 
-            // Auditoría Anti-Fraude
             db.prepare('INSERT INTO audit_logs (branch_id, user_id, action, details) VALUES (?, ?, ?, ?)').run(
                 sale.branch_id, managerUser.id, 'TICKET_VOIDED', `Ticket ${ticket_number} por $${sale.total_amount} fue ANULADO por ${managerUser.username}. Motivo: ${reason}`
             );
@@ -273,9 +326,6 @@ function voidTicket(req, res) {
     }
 }
 
-/**
- * Obtener detalles completos de un Ticket para Reimpresión
- */
 function getTicketDetails(req, res) {
     try {
         const { ticket_number } = req.params;

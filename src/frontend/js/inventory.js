@@ -1,8 +1,9 @@
 /**
- * LÓGICA DE GESTIÓN DE INVENTARIOS, CAMBIO DE PRECIOS Y TRANSFERENCIAS
+ * LÓGICA DE GESTIÓN DE INVENTARIOS, CAMBIO DE PRECIOS, TRANSFERENCIAS Y ÓRDENES DE COMPRA
  */
 
 let lastLoadedInventoryList = [];
+let lastLoadedSuppliers = [];
 
 async function loadInventory() {
     try {
@@ -11,6 +12,7 @@ async function loadInventory() {
         
         if (res.success) {
             lastLoadedInventoryList = res.inventory;
+            lastLoadedSuppliers = res.suppliers || [];
             renderInventoryTable(res.inventory);
         }
     } catch (error) {
@@ -60,12 +62,31 @@ function renderInventoryTable(inventory) {
 
     tbody.innerHTML = inventory.map(item => {
         const isLowStock = item.stock_quantity <= (item.min_stock_alert || 10);
+        const isCombo = item.is_combo === 1;
+
+        const actionButtons = `
+            <button onclick="openEditPriceModal(${item.product_id}, '${escapeQuote(item.product_name)}', ${item.cost_price}, ${item.sale_price})" 
+                    class="px-2 py-1 bg-amber-500 text-slate-950 rounded-lg text-xs font-extrabold hover:bg-amber-400">
+                🏷️ Precio
+            </button>
+            <button onclick="printBarcodeLabel('${item.sku}', '${escapeQuote(item.product_name)}', ${item.sale_price})" 
+                    class="px-2 py-1 bg-cyan-700 text-white rounded-lg text-xs font-bold hover:bg-cyan-600">
+                🖨️ Etiqueta
+            </button>
+            <button onclick="promptStockAdjustment(${item.product_id}, '${escapeQuote(item.product_name)}')" 
+                    class="px-2 py-1 bg-slate-800 text-white rounded-lg text-xs font-bold hover:bg-slate-700">
+                Ajustar
+            </button>
+        `;
 
         if (isAdmin) {
             return `
                 <tr class="hover:bg-gray-50">
                     <td class="p-3 font-mono text-xs font-bold text-gray-600">${item.sku}</td>
-                    <td class="p-3 font-bold text-slate-800">${item.product_name}</td>
+                    <td class="p-3 font-bold text-slate-800 flex items-center gap-2">
+                        <span>${item.product_name}</span>
+                        ${isCombo ? '<span class="bg-amber-500/20 text-amber-700 text-[10px] font-black px-1.5 py-0.5 rounded">COMBO</span>' : ''}
+                    </td>
                     <td class="p-3 text-xs text-gray-500">${item.category_name || 'Sin Categoría'}</td>
                     <td class="p-3 text-gray-600 font-semibold">$${item.cost_price.toFixed(2)}</td>
                     <td class="p-3 text-amber-600 font-black">$${item.sale_price.toFixed(2)}</td>
@@ -76,16 +97,7 @@ function renderInventoryTable(inventory) {
                             ${item.stock_quantity} ${item.unit_type}
                         </span>
                     </td>
-                    <td class="p-3 text-right space-x-1">
-                        <button onclick="openEditPriceModal(${item.product_id}, '${escapeQuote(item.product_name)}', ${item.cost_price}, ${item.sale_price})" 
-                                class="px-2.5 py-1 bg-amber-500 text-slate-950 rounded-lg text-xs font-extrabold hover:bg-amber-400">
-                            🏷️ Editar Precio
-                        </button>
-                        <button onclick="promptStockAdjustment(${item.product_id}, '${escapeQuote(item.product_name)}')" 
-                                class="px-2.5 py-1 bg-slate-800 text-white rounded-lg text-xs font-bold hover:bg-slate-700">
-                            Ajustar Stock
-                        </button>
-                    </td>
+                    <td class="p-3 text-right space-x-1">${actionButtons}</td>
                 </tr>
             `;
         } else {
@@ -101,16 +113,7 @@ function renderInventoryTable(inventory) {
                             ${item.stock_quantity} ${item.unit_type}
                         </span>
                     </td>
-                    <td class="p-3 text-right space-x-1">
-                        <button onclick="openEditPriceModal(${item.product_id}, '${escapeQuote(item.product_name)}', ${item.cost_price}, ${item.sale_price})" 
-                                class="px-2.5 py-1 bg-amber-500 text-slate-950 rounded-lg text-xs font-extrabold hover:bg-amber-400">
-                            🏷️ Precio
-                        </button>
-                        <button onclick="promptStockAdjustment(${item.product_id}, '${escapeQuote(item.product_name)}')" 
-                                class="px-2.5 py-1 bg-slate-800 text-white rounded-lg text-xs font-bold hover:bg-slate-700">
-                            Ajustar
-                        </button>
-                    </td>
+                    <td class="p-3 text-right space-x-1">${actionButtons}</td>
                 </tr>
             `;
         }
@@ -121,7 +124,38 @@ function escapeQuote(str) {
     return str.replace(/'/g, "\\'");
 }
 
-// Modal Edición de Precios en Tiempo Real
+// Generador e Impresor de Etiquetas con Código de Barras
+function printBarcodeLabel(sku, name, price) {
+    const printWindow = window.open('', '_blank', 'width=400,height=300');
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Etiqueta de Código de Barras - ${sku}</title>
+            <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+            <style>
+                body { font-family: sans-serif; text-align: center; margin: 10px; }
+                .label-card { border: 2px dashed #000; padding: 10px; border-radius: 8px; display: inline-block; }
+                h3 { margin: 2px 0; font-size: 14px; }
+                .price { font-size: 18px; font-weight: bold; color: #000; margin: 4px 0; }
+            </style>
+        </head>
+        <body onload="window.print()">
+            <div class="label-card">
+                <h3>${name}</h3>
+                <div class="price">$${price.toFixed(2)} MXN</div>
+                <svg id="barcode"></svg>
+            </div>
+            <script>
+                JsBarcode("#barcode", "${sku}", { format: "CODE128", width: 2, height: 40, displayValue: true });
+            </script>
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
+}
+
+// Modal Edición de Precios
 function openEditPriceModal(productId, productName, costPrice, salePrice) {
     document.getElementById('edit-price-prod-id').value = productId;
     document.getElementById('edit-price-prod-name').innerText = productName;
@@ -159,6 +193,41 @@ async function handleSavePrice(e) {
         }
     } catch (err) {
         alert(err.message || 'Error al cambiar precio.');
+    }
+}
+
+// Modal Orden de Compra a Proveedores
+function openAutoPOModal() {
+    const select = document.getElementById('auto-po-supplier-select');
+    if (select && lastLoadedSuppliers.length > 0) {
+        select.innerHTML = lastLoadedSuppliers.map(s => `<option value="${s.id}">${s.name} (${s.contact_name})</option>`).join('');
+    }
+    document.getElementById('modal-auto-po').classList.remove('hidden');
+}
+
+function closeAutoPOModal() {
+    document.getElementById('modal-auto-po').classList.add('hidden');
+}
+
+async function handleGenerateAutoPO(e) {
+    e.preventDefault();
+    const supplierId = document.getElementById('auto-po-supplier-select').value;
+
+    try {
+        const res = await apiFetch('/api/inventory/po/generate', {
+            method: 'POST',
+            body: JSON.stringify({ supplier_id: supplierId })
+        });
+
+        if (res.success) {
+            alert(`✅ ${res.message}`);
+            closeAutoPOModal();
+            loadInventory();
+        } else {
+            alert(res.message);
+        }
+    } catch (err) {
+        alert(err.message || 'Error al generar Orden de Compra.');
     }
 }
 

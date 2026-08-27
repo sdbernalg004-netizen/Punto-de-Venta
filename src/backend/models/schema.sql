@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS products (
     cost_price REAL NOT NULL DEFAULT 0.0,
     sale_price REAL NOT NULL DEFAULT 0.0,
     is_weighted INTEGER DEFAULT 0, -- 1 si requiere peso (ej. alimento granel)
-    quick_key INTEGER DEFAULT 0,  -- 1 si se muestra en el grid de cobro rápido
+    is_combo INTEGER DEFAULT 0,    -- 1 si es un paquete/kit armado
+    quick_key INTEGER DEFAULT 0,   -- 1 si se muestra en el grid de cobro rápido
     image_url TEXT,
     is_active INTEGER DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -99,7 +100,7 @@ CREATE TABLE IF NOT EXISTS shift_movements (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- 9. Clientes y Cuenta de Crédito (Fiado)
+-- 9. Clientes, Programa de Puntos/Fidelización y Crédito
 CREATE TABLE IF NOT EXISTS customers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name VARCHAR(100) NOT NULL,
@@ -107,6 +108,8 @@ CREATE TABLE IF NOT EXISTS customers (
     email VARCHAR(100),
     credit_limit REAL DEFAULT 0.0,
     current_balance REAL DEFAULT 0.0,
+    points_balance INTEGER DEFAULT 0, -- Puntos acumulados por compras
+    last_purchase_date DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -120,6 +123,7 @@ CREATE TABLE IF NOT EXISTS sales (
     customer_id INTEGER REFERENCES customers(id),
     subtotal REAL NOT NULL,
     discount_amount REAL DEFAULT 0.0,
+    points_redeemed INTEGER DEFAULT 0,
     tax_amount REAL DEFAULT 0.0,
     total_amount REAL NOT NULL,
     payment_method VARCHAR(20) NOT NULL CHECK (payment_method IN ('CASH', 'CARD', 'MIXED', 'CREDIT')),
@@ -188,4 +192,52 @@ CREATE TABLE IF NOT EXISTS fraud_alerts (
     description TEXT NOT NULL,
     resolved INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ================= MÓDULOS AVANZADOS ESPECIALIZADOS =================
+
+-- 15. Combos / Kits / Bundles (Desglose automático de stock)
+CREATE TABLE IF NOT EXISTS product_combos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    combo_product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    item_product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    quantity REAL NOT NULL DEFAULT 1.0
+);
+
+-- 16. Precios por Volumen / Mayoreo y Menudeo (Tiered Pricing)
+CREATE TABLE IF NOT EXISTS product_tiered_prices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    min_quantity REAL NOT NULL,
+    max_quantity REAL,
+    tiered_price REAL NOT NULL
+);
+
+-- 17. Proveedores y Órdenes de Compra Automáticas
+CREATE TABLE IF NOT EXISTS suppliers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR(100) NOT NULL,
+    contact_name VARCHAR(100),
+    phone VARCHAR(20),
+    email VARCHAR(100),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS purchase_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    po_code VARCHAR(50) UNIQUE NOT NULL,
+    supplier_id INTEGER NOT NULL REFERENCES suppliers(id),
+    branch_id INTEGER NOT NULL REFERENCES branches(id),
+    status VARCHAR(20) DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'SENT', 'RECEIVED')),
+    total_cost REAL DEFAULT 0.0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    received_at DATETIME
+);
+
+CREATE TABLE IF NOT EXISTS purchase_order_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    po_id INTEGER NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+    product_id INTEGER NOT NULL REFERENCES products(id),
+    quantity REAL NOT NULL,
+    unit_cost REAL NOT NULL
 );

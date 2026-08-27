@@ -68,6 +68,8 @@ app.post('/api/inventory/update-price', authenticateToken, verifyManagerPin, inv
 app.post('/api/inventory/add-product', authenticateToken, requireRole('ADMIN', 'MANAGER'), inventoryController.addProduct);
 app.post('/api/inventory/transfer/create', authenticateToken, inventoryController.createStockTransfer);
 app.post('/api/inventory/transfer/receive', authenticateToken, inventoryController.receiveStockTransfer);
+app.post('/api/inventory/po/generate', authenticateToken, inventoryController.generateAutoPO);
+app.post('/api/inventory/po/receive', authenticateToken, inventoryController.receivePO);
 
 // 4. Turnos de Caja, Arqueo a Ciegas y Sangrías
 app.post('/api/shifts/open', authenticateToken, shiftsController.openShift);
