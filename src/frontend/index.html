@@ -167,7 +167,13 @@
                     <div class="flex gap-2 flex-1 max-w-md">
                         <input type="text" id="inv-search" placeholder="Buscar por SKU o nombre..." class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm">
                     </div>
-                    <div class="flex gap-2">
+                    <div class="flex gap-2 flex-wrap">
+                        <button onclick="openAddProductModal()" class="px-4 py-2 bg-amber-500 text-slate-950 font-extrabold text-xs rounded-xl hover:bg-amber-400 shadow">
+                            <i class="fa-solid fa-plus mr-1"></i> Nuevo Producto
+                        </button>
+                        <button onclick="openStockEntryModal()" class="px-4 py-2 bg-cyan-700 text-white font-bold text-xs rounded-xl hover:bg-cyan-600 shadow">
+                            <i class="fa-solid fa-boxes-packing mr-1"></i> Entrada de Mercancía
+                        </button>
                         <button onclick="openAutoPOModal()" class="px-4 py-2 bg-emerald-600 text-white font-bold text-xs rounded-xl hover:bg-emerald-500 shadow">
                             <i class="fa-solid fa-truck-field mr-1"></i> Orden a Proveedor (PO)
                         </button>
@@ -477,6 +483,101 @@
                 <div class="flex gap-2 pt-2">
                     <button type="button" onclick="closeAutoPOModal()" class="flex-1 py-2.5 bg-gray-200 text-gray-700 font-bold text-xs rounded-xl">Cancelar</button>
                     <button type="submit" class="flex-1 py-2.5 bg-emerald-600 text-white font-extrabold text-xs rounded-xl shadow hover:bg-emerald-500">Generar Orden Sugerida</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL ALTA DE NUEVO PRODUCTO EN CATÁLOGO -->
+    <div id="modal-add-product" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl p-6 border border-gray-100 max-h-[90vh] overflow-y-auto">
+            <h3 class="text-xl font-black text-slate-900 mb-1">Agregar Nuevo Producto</h3>
+            <p class="text-xs text-gray-500 mb-4">Ingrese los datos del producto para añadirlo al catálogo maestro.</p>
+            <form onsubmit="handleCreateProduct(event)" class="space-y-3">
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-700 uppercase mb-1">SKU Único *</label>
+                        <input type="text" id="new-prod-sku" required placeholder="ej. DUL-009" class="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs font-bold">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-700 uppercase mb-1">Código de Barras</label>
+                        <input type="text" id="new-prod-barcode" placeholder="ej. 750100000009" class="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-700 uppercase mb-1">Nombre del Producto *</label>
+                    <input type="text" id="new-prod-name" required placeholder="ej. Chicles Canel's 100 pzs" class="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs font-bold">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-700 uppercase mb-1">Categoría *</label>
+                        <select id="new-prod-category" class="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs font-semibold">
+                            <option value="1">Dulcería & Gominolas</option>
+                            <option value="2">Desechables & Empaques</option>
+                            <option value="3">Alimento para Mascotas</option>
+                            <option value="4">Materias Primas</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-700 uppercase mb-1">Unidad de Medida *</label>
+                        <select id="new-prod-unit" class="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs font-semibold">
+                            <option value="piece">Pieza / Paquete</option>
+                            <option value="kg">Kilogramo (kg)</option>
+                            <option value="gram">Gramos (g)</option>
+                            <option value="box">Caja Cerrada</option>
+                            <option value="liter">Litro</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-700 uppercase mb-1">Precio Costo ($)</label>
+                        <input type="number" id="new-prod-cost" step="0.01" value="0.00" class="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs font-bold">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-700 uppercase mb-1">Precio Venta ($) *</label>
+                        <input type="number" id="new-prod-sale" step="0.01" required value="0.00" class="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs font-black text-amber-600">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-700 uppercase mb-1">Stock Inicial</label>
+                        <input type="number" id="new-prod-initial-stock" step="0.1" value="50" class="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs font-bold text-emerald-600">
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 pt-1">
+                    <input type="checkbox" id="new-prod-weighted" class="w-4 h-4 rounded text-amber-500">
+                    <label for="new-prod-weighted" class="text-xs font-bold text-gray-700">Producto a granel / requiere báscula (ej. croquetas/harina)</label>
+                </div>
+                <div class="flex gap-2 pt-3">
+                    <button type="button" onclick="closeAddProductModal()" class="flex-1 py-2.5 bg-gray-200 text-gray-700 font-bold text-xs rounded-xl">Cancelar</button>
+                    <button type="submit" class="flex-1 py-2.5 bg-amber-500 text-slate-950 font-extrabold text-xs rounded-xl shadow hover:bg-amber-400">Guardar Producto</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL ENTRADA DIRECTA DE STOCK / REABASTECIMIENTO -->
+    <div id="modal-stock-entry" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl p-6 border border-gray-100">
+            <h3 class="text-lg font-black text-slate-900 mb-1">Entrada de Mercancía / Reabastecimiento</h3>
+            <p class="text-xs text-gray-500 mb-4">Agregue unidades de stock adicionales a un producto cuando reciba un pedido.</p>
+            <form onsubmit="handleAddStockEntry(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Seleccionar Producto</label>
+                    <select id="entry-prod-id" class="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-xs font-semibold">
+                        <!-- Carga dinámica -->
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Cantidad a Agregar (+)</label>
+                    <input type="number" id="entry-qty" step="0.1" required value="20" class="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-lg font-black text-emerald-600">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Motivo / Factura de Proveedor</label>
+                    <input type="text" id="entry-reason" placeholder="ej. Recepción de factura F-8892 Dulces Vero" class="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs">
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="closeStockEntryModal()" class="flex-1 py-2.5 bg-gray-200 text-gray-700 font-bold text-xs rounded-xl">Cancelar</button>
+                    <button type="submit" class="flex-1 py-2.5 bg-cyan-700 text-white font-extrabold text-xs rounded-xl shadow hover:bg-cyan-600">Ingresar Stock (+)</button>
                 </div>
             </form>
         </div>

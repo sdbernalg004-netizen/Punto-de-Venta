@@ -312,3 +312,87 @@ async function promptStockAdjustment(productId, productName) {
         alert(err.message || 'Error al ajustar stock.');
     }
 }
+
+// Modal Alta de Nuevo Producto
+function openAddProductModal() {
+    document.getElementById('modal-add-product').classList.remove('hidden');
+}
+
+function closeAddProductModal() {
+    document.getElementById('modal-add-product').classList.add('hidden');
+}
+
+async function handleCreateProduct(e) {
+    e.preventDefault();
+    const payload = {
+        sku: document.getElementById('new-prod-sku').value.trim(),
+        barcode: document.getElementById('new-prod-barcode').value.trim() || null,
+        name: document.getElementById('new-prod-name').value.trim(),
+        category_id: parseInt(document.getElementById('new-prod-category').value),
+        unit_type: document.getElementById('new-prod-unit').value,
+        cost_price: parseFloat(document.getElementById('new-prod-cost').value) || 0,
+        sale_price: parseFloat(document.getElementById('new-prod-sale').value) || 0,
+        initial_stock: parseFloat(document.getElementById('new-prod-initial-stock').value) || 0,
+        is_weighted: document.getElementById('new-prod-weighted').checked ? 1 : 0
+    };
+
+    try {
+        const res = await apiFetch('/api/inventory/add-product', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+
+        if (res.success) {
+            alert(`✅ ${res.message}`);
+            closeAddProductModal();
+            loadInventory();
+        } else {
+            alert(res.message);
+        }
+    } catch (err) {
+        alert(err.message || 'Error al crear producto.');
+    }
+}
+
+// Modal Entrada Directa de Stock / Reabastecimiento
+function openStockEntryModal() {
+    const select = document.getElementById('entry-prod-id');
+    if (select && lastLoadedInventoryList.length > 0) {
+        select.innerHTML = lastLoadedInventoryList.map(p => `
+            <option value="${p.product_id}">${p.product_name} (Stock Actual: ${p.stock_quantity})</option>
+        `).join('');
+    }
+    document.getElementById('modal-stock-entry').classList.remove('hidden');
+}
+
+function closeStockEntryModal() {
+    document.getElementById('modal-stock-entry').classList.add('hidden');
+}
+
+async function handleAddStockEntry(e) {
+    e.preventDefault();
+    const productId = parseInt(document.getElementById('entry-prod-id').value);
+    const qty = parseFloat(document.getElementById('entry-qty').value);
+    const reason = document.getElementById('entry-reason').value;
+
+    try {
+        const res = await apiFetch('/api/inventory/add-stock-entry', {
+            method: 'POST',
+            body: JSON.stringify({
+                product_id: productId,
+                quantity_to_add: qty,
+                reason
+            })
+        });
+
+        if (res.success) {
+            alert(`✅ ${res.message}`);
+            closeStockEntryModal();
+            loadInventory();
+        } else {
+            alert(res.message);
+        }
+    } catch (err) {
+        alert(err.message || 'Error al ingresar stock.');
+    }
+}

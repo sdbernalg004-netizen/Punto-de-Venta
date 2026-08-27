@@ -1,5 +1,5 @@
 /**
- * CONTROLADOR DE GESTIÓN DE INVENTARIOS, COMBOS, TRANSFERENCIAS Y ÓRDENES DE COMPRA
+ * CONTROLADOR DE GESTIÓN DE INVENTARIOS, COMBOS, TRANSFERENCIAS, ÓRDENES Y ENTRADA DE MERCANCÍA
  */
 
 const { db } = require('../config/database');
@@ -78,6 +78,7 @@ function getInventory(req, res) {
 
         const expiringBatches = db.prepare(expiringSql).all(...expiringParams);
         const branches = db.prepare('SELECT id, code, name FROM branches').all();
+        const categories = db.prepare('SELECT * FROM categories').all();
         const suppliers = db.prepare('SELECT * FROM suppliers').all();
         const purchaseOrders = db.prepare(`
             SELECT po.*, s.name as supplier_name, b.name as branch_name 
@@ -87,10 +88,83 @@ function getInventory(req, res) {
             ORDER BY po.id DESC
         `).all();
 
-        res.json({ success: true, inventory, expiringBatches, branches, suppliers, purchaseOrders });
+        res.json({ success: true, inventory, expiringBatches, branches, categories, suppliers, purchaseOrders });
     } catch (error) {
         console.error('Error al obtener inventario:', error);
         res.status(500).json({ success: false, message: 'Error interno al consultar inventario.' });
+    }
+}
+
+/**
+ * Entrada Directa de Stock / Reabastecimiento de Mercancía
+ */
+function addStockEntry(req, res) {
+    try {
+        const { product_id, branch_id, quantity_to_add, reason } = req.body;
+        const targetBranch = branch_id || req.user.branch_id || 1;
+
+        if (!product_id || !quantity_to_add || quantity_to_add <= 0) {
+            return res.status(400).json({ success: false, message: 'Producto y cantidad a ingresar requeridos.' });
+        }
+
+        db.prepare(`
+            INSERT INTO inventory (branch_id, product_id, stock_quantity)
+            VALUES (?, ?, ?)
+            ON CONFLICT(branch_id, product_id) DO UPDATE SET stock_quantity = stock_quantity + ?, updated_at = CURRENT_TIMESTAMP
+        `).run(targetBranch, product_id, quantity_to_add, quantity_to_add);
+
+        const prod = db.prepare('SELECT name FROM products WHERE id = ?').get(product_id);
+
+        db.prepare('INSERT INTO audit_logs (branch_id, user_id, action, details) VALUES (?, ?, ?, ?)').run(
+            targetBranch, req.user.id, 'STOCK_ENTRY',
+            `Entrada de mercancía para "${prod ? prod.name : product_id}". Se agregaron +${quantity_to_add} unidades. Motivo: ${reason || 'Reabastecimiento de proveedor'}`
+        );
+
+        if (req.app.get('broadcastWS')) {
+            req.app.get('broadcastWS')({ type: 'INVENTORY_UPDATED', product_id });
+        }
+
+        res.json({ success: true, message: `Se agregaron +${quantity_to_add} unidades a "${prod ? prod.name : 'producto'}" exitosamente.` });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Error al ingresar stock.' });
+    }
+}
+
+/**
+ * Registrar un Nuevo Producto en el Catálogo Maestro con Stock Inicial
+ */
+function addProduct(req, res) {
+    try {
+        const { sku, barcode, name, category_id, unit_type, cost_price, sale_price, initial_stock = 0, is_weighted, quick_key } = req.body;
+
+        if (!sku || !name || !category_id || !sale_price) {
+            return res.status(400).json({ success: false, message: 'Campos requeridos faltantes (SKU, nombre, categoría y precio de venta).' });
+        }
+
+        const stmt = db.prepare(`
+            INSERT INTO products (sku, barcode, name, category_id, unit_type, cost_price, sale_price, is_weighted, quick_key)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        const result = stmt.run(sku, barcode || null, name, category_id, unit_type || 'piece', cost_price || 0, sale_price, is_weighted ? 1 : 0, quick_key ? 1 : 0);
+        const newProdId = result.lastInsertRowid;
+
+        const branches = db.prepare('SELECT id FROM branches').all();
+        const insertInv = db.prepare('INSERT INTO inventory (branch_id, product_id, stock_quantity) VALUES (?, ?, ?)');
+        const stockQty = parseFloat(initial_stock) || 0;
+        branches.forEach(b => insertInv.run(b.id, newProdId, stockQty));
+
+        db.prepare('INSERT INTO audit_logs (branch_id, user_id, action, details) VALUES (?, ?, ?, ?)').run(
+            req.user.branch_id || null, req.user.id, 'PRODUCT_CREATED',
+            `Nuevo producto creado "${name}" (SKU: ${sku}). Precio costo: $${cost_price}, Venta: $${sale_price}, Stock inicial: ${stockQty}`
+        );
+
+        if (req.app.get('broadcastWS')) {
+            req.app.get('broadcastWS')({ type: 'INVENTORY_UPDATED' });
+        }
+
+        res.json({ success: true, message: `Producto "${name}" registrado correctamente con ${stockQty} unidades de stock inicial.`, product_id: newProdId });
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message.includes('UNIQUE') ? 'El SKU o Código de Barras ya existe en el catálogo.' : error.message });
     }
 }
 
@@ -168,7 +242,7 @@ function updatePrice(req, res) {
 }
 
 /**
- * Generación Automática de Orden de Compra a Proveedores (*Supplier PO System*)
+ * Generación Automática de Orden de Compra a Proveedores
  */
 function generateAutoPO(req, res) {
     try {
@@ -179,7 +253,6 @@ function generateAutoPO(req, res) {
             return res.status(400).json({ success: false, message: 'Seleccione un proveedor.' });
         }
 
-        // Buscar productos con stock bajo
         const lowStockItems = db.prepare(`
             SELECT p.id as product_id, p.name, p.cost_price, i.stock_quantity, i.min_stock_alert
             FROM products p
@@ -265,30 +338,6 @@ function receivePO(req, res) {
 
     } catch (error) {
         res.status(500).json({ success: false, message: 'Error al recibir Orden de Compra.' });
-    }
-}
-
-function addProduct(req, res) {
-    try {
-        const { sku, barcode, name, category_id, unit_type, cost_price, sale_price, is_weighted, quick_key } = req.body;
-
-        if (!sku || !name || !category_id || !sale_price) {
-            return res.status(400).json({ success: false, message: 'Campos requeridos faltantes.' });
-        }
-
-        const stmt = db.prepare(`
-            INSERT INTO products (sku, barcode, name, category_id, unit_type, cost_price, sale_price, is_weighted, quick_key)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        const result = stmt.run(sku, barcode || null, name, category_id, unit_type || 'piece', cost_price || 0, sale_price, is_weighted ? 1 : 0, quick_key ? 1 : 0);
-
-        const branches = db.prepare('SELECT id FROM branches').all();
-        const insertInv = db.prepare('INSERT INTO inventory (branch_id, product_id, stock_quantity) VALUES (?, ?, 0)');
-        branches.forEach(b => insertInv.run(b.id, result.lastInsertRowid));
-
-        res.json({ success: true, message: 'Producto agregado al catálogo maestro.', product_id: result.lastInsertRowid });
-    } catch (error) {
-        res.status(400).json({ success: false, message: error.message.includes('UNIQUE') ? 'El SKU o Código de Barras ya existe.' : error.message });
     }
 }
 
@@ -392,11 +441,12 @@ function receiveStockTransfer(req, res) {
 
 module.exports = {
     getInventory,
+    addStockEntry,
+    addProduct,
     updateStock,
     updatePrice,
     generateAutoPO,
     receivePO,
-    addProduct,
     createStockTransfer,
     receiveStockTransfer
 };

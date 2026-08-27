@@ -66,6 +66,7 @@ app.get('/api/inventory', authenticateToken, scopeBranch, inventoryController.ge
 app.post('/api/inventory/update-stock', authenticateToken, verifyManagerPin, inventoryController.updateStock);
 app.post('/api/inventory/update-price', authenticateToken, verifyManagerPin, inventoryController.updatePrice);
 app.post('/api/inventory/add-product', authenticateToken, requireRole('ADMIN', 'MANAGER'), inventoryController.addProduct);
+app.post('/api/inventory/add-stock-entry', authenticateToken, inventoryController.addStockEntry);
 app.post('/api/inventory/transfer/create', authenticateToken, inventoryController.createStockTransfer);
 app.post('/api/inventory/transfer/receive', authenticateToken, inventoryController.receiveStockTransfer);
 app.post('/api/inventory/po/generate', authenticateToken, inventoryController.generateAutoPO);
