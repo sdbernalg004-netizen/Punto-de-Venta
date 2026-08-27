@@ -20,7 +20,7 @@ const inventoryController = require('./controllers/inventory.controller');
 const shiftsController = require('./controllers/shifts.controller');
 const analyticsController = require('./controllers/analytics.controller');
 
-const { authenticateToken, requireRole, scopeBranch, verifyManagerPin } = require('./middlewares/auth.middleware');
+const { authenticateToken, requireRole, requireProductPermission, scopeBranch, verifyManagerPin } = require('./middlewares/auth.middleware');
 
 const app = express();
 const server = http.createServer(app);
@@ -67,7 +67,7 @@ app.get('/api/pos/ticket/:ticket_number', authenticateToken, posController.getTi
 app.get('/api/inventory', authenticateToken, scopeBranch, inventoryController.getInventory);
 app.post('/api/inventory/update-stock', authenticateToken, verifyManagerPin, inventoryController.updateStock);
 app.post('/api/inventory/update-price', authenticateToken, verifyManagerPin, inventoryController.updatePrice);
-app.post('/api/inventory/add-product', authenticateToken, requireRole('ADMIN', 'MANAGER'), inventoryController.addProduct);
+app.post('/api/inventory/add-product', authenticateToken, requireProductPermission, inventoryController.addProduct);
 app.post('/api/inventory/add-stock-entry', authenticateToken, inventoryController.addStockEntry);
 app.post('/api/inventory/transfer/create', authenticateToken, inventoryController.createStockTransfer);
 app.post('/api/inventory/transfer/receive', authenticateToken, inventoryController.receiveStockTransfer);

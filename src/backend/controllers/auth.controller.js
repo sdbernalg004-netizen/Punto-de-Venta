@@ -31,6 +31,7 @@ function login(req, res) {
             username: user.username,
             full_name: user.full_name,
             role: user.role,
+            can_add_products: user.can_add_products || 0,
             branch_id: user.branch_id,
             branch_name: user.branch_name || 'Todas (Administración Central)'
         };
@@ -117,7 +118,7 @@ function registerTenant(req, res) {
 
 function addStaff(req, res) {
     try {
-        const { full_name, username, password, role, pin = '1234', branch_id } = req.body;
+        const { full_name, username, password, role, pin = '1234', branch_id, can_add_products = 0 } = req.body;
         const managerUser = req.approvedByManager || req.user;
 
         if (!full_name || !username || !password || !role) {
@@ -133,13 +134,14 @@ function addStaff(req, res) {
         const passHash = bcrypt.hashSync(password, salt);
         const pinHash = bcrypt.hashSync(String(pin), salt);
         const targetBranch = branch_id || req.user.branch_id || 1;
+        const canAddProds = can_add_products ? 1 : 0;
 
-        db.prepare('INSERT INTO users (username, password_hash, full_name, role, pin_hash, branch_id) VALUES (?, ?, ?, ?, ?, ?)').run(
-            username, passHash, full_name, role, pinHash, targetBranch
+        db.prepare('INSERT INTO users (username, password_hash, full_name, role, pin_hash, branch_id, can_add_products) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+            username, passHash, full_name, role, pinHash, targetBranch, canAddProds
         );
 
         db.prepare('INSERT INTO audit_logs (branch_id, user_id, action, details) VALUES (?, ?, ?, ?)').run(
-            targetBranch, managerUser.id, 'STAFF_CREATED', `Nuevo personal ${role} "${full_name}" registrado para la sucursal ID ${targetBranch}`
+            targetBranch, managerUser.id, 'STAFF_CREATED', `Nuevo personal ${role} "${full_name}" registrado. Permiso alta productos: ${canAddProds ? 'SI' : 'NO'}`
         );
 
         res.json({ success: true, message: `Empleado "${full_name}" (${role}) registrado con éxito.` });

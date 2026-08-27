@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS users (
     role VARCHAR(20) NOT NULL CHECK (role IN ('ADMIN', 'MANAGER', 'CASHIER')),
     pin_hash VARCHAR(255), -- Hash del PIN de 4 dígitos para autorizaciones rápidas
     branch_id INTEGER REFERENCES branches(id) ON DELETE SET NULL,
+    can_add_products INTEGER DEFAULT 0, -- 1 si tiene permiso especial para registrar productos
     is_active INTEGER DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -83,7 +84,7 @@ CREATE TABLE IF NOT EXISTS shifts (
     closed_at DATETIME,
     initial_cash REAL NOT NULL DEFAULT 0.0,
     blind_cash_counted REAL, -- Dinero que contó físicamente el cajero sin ver el sistema
-    expected_cash REAL,     -- Dinero teórico calculado por el sistema
+    expected_cash REAL,     -- Dinero teórico calculated por el sistema
     discrepancy REAL,         -- Diferencia (Faltante / Sobrante)
     status VARCHAR(20) DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'CLOSED')),
     notes TEXT

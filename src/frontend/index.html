@@ -66,6 +66,10 @@
                     <i class="fa-solid fa-shield-halved w-5 text-lg text-rose-400"></i>
                     <span>Auditoría Anti-Fraude</span>
                 </button>
+                <button onclick="openAddStaffModal()" id="nav-staff" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition text-amber-300 hover:bg-slate-800 border border-amber-500/30 mt-2">
+                    <i class="fa-solid fa-user-plus w-5 text-lg text-amber-400"></i>
+                    <span>+ Alta de Personal</span>
+                </button>
             </nav>
         </div>
 
@@ -653,6 +657,61 @@
                 <div class="flex gap-2 pt-2">
                     <button type="button" onclick="closeStockEntryModal()" class="flex-1 py-2.5 bg-gray-200 text-gray-700 font-bold text-xs rounded-xl">Cancelar</button>
                     <button type="submit" class="flex-1 py-2.5 bg-cyan-700 text-white font-extrabold text-xs rounded-xl shadow hover:bg-cyan-600">Ingresar Stock (+)</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL REGISTRO Y ALTA DE PERSONAL CON PERMISOS GRANULARES -->
+    <div id="modal-add-staff" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl p-6 border border-gray-100">
+            <div class="text-center mb-4">
+                <div class="w-12 h-12 bg-indigo-500/20 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-2 font-bold text-xl">
+                    <i class="fa-solid fa-user-plus"></i>
+                </div>
+                <h3 class="text-lg font-black text-slate-900">Dar de Alta Empleado / Cajero</h3>
+                <p class="text-xs text-gray-500">Agregue cajeros o gerentes a sus sucursales y asigne permisos.</p>
+            </div>
+            <form onsubmit="handleAddStaff(event)" class="space-y-3">
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Nombre Completo del Empleado *</label>
+                    <input type="text" id="staff-fullname" required placeholder="ej. María López" class="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs font-bold">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Usuario *</label>
+                        <input type="text" id="staff-username" required placeholder="ej. maria_cajero" class="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs font-bold">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Contraseña *</label>
+                        <input type="password" id="staff-password" required placeholder="••••••••" class="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs font-bold">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Rol de Trabajo *</label>
+                        <select id="staff-role" class="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs font-semibold">
+                            <option value="CASHIER">Cajero(a)</option>
+                            <option value="MANAGER">Gerente de Sucursal</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 uppercase mb-1">PIN 4 Dígitos</label>
+                        <input type="password" id="staff-pin" maxlength="4" value="1234" class="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs text-center font-black">
+                    </div>
+                </div>
+                <div class="bg-amber-50 border border-amber-200 p-3 rounded-2xl">
+                    <div class="flex items-start gap-2">
+                        <input type="checkbox" id="staff-can-add-products" class="w-4 h-4 mt-0.5 rounded text-amber-500">
+                        <label for="staff-can-add-products" class="text-xs font-bold text-amber-900 leading-tight">
+                            Permitir a este Cajero dar de alta productos en el catálogo
+                            <span class="block text-[10px] font-normal text-amber-700 mt-0.5">Podrá utilizar el botón "Nuevo Producto" para registrar mercancía cuando llegue a la tienda.</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="closeAddStaffModal()" class="flex-1 py-2.5 bg-gray-200 text-gray-700 font-bold text-xs rounded-xl">Cancelar</button>
+                    <button type="submit" class="flex-1 py-2.5 bg-slate-900 text-white font-extrabold text-xs rounded-xl shadow hover:bg-slate-800">Guardar Empleado</button>
                 </div>
             </form>
         </div>

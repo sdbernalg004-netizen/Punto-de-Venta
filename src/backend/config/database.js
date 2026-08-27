@@ -24,6 +24,12 @@ function initDatabase() {
     const schemaSql = fs.readFileSync(schemaPath, 'utf8');
     db.exec(schemaSql);
 
+    try {
+        db.exec("ALTER TABLE users ADD COLUMN can_add_products INTEGER DEFAULT 0");
+    } catch (e) {
+        // Columna ya existe
+    }
+
     const comboCount = db.prepare('SELECT COUNT(*) as count FROM product_combos').get().count;
     if (comboCount === 0) {
         seedInitialData();

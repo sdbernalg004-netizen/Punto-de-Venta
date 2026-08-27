@@ -44,6 +44,23 @@ function requireRole(...allowedRoles) {
     };
 }
 
+function requireProductPermission(req, res, next) {
+    if (!req.user) {
+        return res.status(401).json({ success: false, message: 'Sesión no válida.' });
+    }
+
+    const isAuthorized = req.user.role === 'ADMIN' || req.user.role === 'MANAGER' || req.user.can_add_products === 1;
+
+    if (!isAuthorized) {
+        return res.status(403).json({
+            success: false,
+            message: 'No tiene permiso asignado para registrar o dar de alta productos. Solicite autorización al Dueño.'
+        });
+    }
+
+    next();
+}
+
 /**
  * 3. Scope / Aislamiento por Sucursal (Multi-Tenancy Security)
  * Garantiza que un cajero/gerente de la Sucursal A NUNCA pueda ver o modificar datos de la Sucursal B.
@@ -110,6 +127,7 @@ module.exports = {
     getJwtSecret,
     authenticateToken,
     requireRole,
+    requireProductPermission,
     scopeBranch,
     verifyManagerPin
 };

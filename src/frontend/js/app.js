@@ -221,12 +221,52 @@ function updateUserUI() {
 
     // Ocultar o mostrar pestañas según rol
     const isOwner = STATE.user.role === 'ADMIN';
-    document.getElementById('nav-dashboard').style.display = isOwner || STATE.user.role === 'MANAGER' ? 'flex' : 'none';
+    const isManager = STATE.user.role === 'MANAGER';
+    document.getElementById('nav-dashboard').style.display = isOwner || isManager ? 'flex' : 'none';
     document.getElementById('nav-audit').style.display = isOwner ? 'flex' : 'none';
+    const navStaff = document.getElementById('nav-staff');
+    if (navStaff) navStaff.style.display = isOwner || isManager ? 'flex' : 'none';
 }
 
 function toggleSidebar() {
     document.getElementById('sidebar').classList.toggle('hidden');
+}
+
+// Modal Alta de Personal con Permisos
+function openAddStaffModal() {
+    document.getElementById('modal-add-staff').classList.remove('hidden');
+}
+
+function closeAddStaffModal() {
+    document.getElementById('modal-add-staff').classList.add('hidden');
+}
+
+async function handleAddStaff(e) {
+    e.preventDefault();
+    const payload = {
+        full_name: document.getElementById('staff-fullname').value.trim(),
+        username: document.getElementById('staff-username').value.trim(),
+        password: document.getElementById('staff-password').value.trim(),
+        role: document.getElementById('staff-role').value,
+        pin: document.getElementById('staff-pin').value.trim() || '1234',
+        can_add_products: document.getElementById('staff-can-add-products').checked ? 1 : 0
+    };
+
+    try {
+        const res = await apiFetch('/api/auth/add-staff', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+
+        if (res.success) {
+            alert(`✅ ${res.message}`);
+            closeAddStaffModal();
+        } else {
+            alert(res.message);
+        }
+    } catch (err) {
+        alert(err.message || 'Error al registrar empleado.');
+    }
 }
 
 // Inicialización de App con Carga Instantánea de Login
