@@ -19,6 +19,7 @@ const posController = require('./controllers/pos.controller');
 const inventoryController = require('./controllers/inventory.controller');
 const shiftsController = require('./controllers/shifts.controller');
 const analyticsController = require('./controllers/analytics.controller');
+const backupController = require('./controllers/backup.controller');
 
 const { authenticateToken, requireRole, requireProductPermission, scopeBranch, verifyManagerPin } = require('./middlewares/auth.middleware');
 
@@ -87,6 +88,11 @@ app.post('/api/shifts/close', authenticateToken, shiftsController.closeShift);
 app.get('/api/analytics/dashboard', authenticateToken, requireRole('ADMIN', 'MANAGER'), analyticsController.getDashboardOverview);
 app.get('/api/analytics/reorder-suggestions', authenticateToken, requireRole('ADMIN', 'MANAGER'), analyticsController.getReorderSuggestions);
 app.get('/api/analytics/fraud-trail', authenticateToken, requireRole('ADMIN'), analyticsController.getFraudAuditTrail);
+
+// 6. Respaldos Automáticos y Descarga de Base de Datos (Dueño / Admin)
+app.post('/api/admin/backup/create', authenticateToken, requireRole('ADMIN'), backupController.createBackup);
+app.get('/api/admin/backup/list', authenticateToken, requireRole('ADMIN'), backupController.listBackups);
+app.get('/api/admin/backup/download/:filename', authenticateToken, requireRole('ADMIN'), backupController.downloadBackup);
 
 // Ruta Fallback para SPA HTML5
 app.use((req, res) => {

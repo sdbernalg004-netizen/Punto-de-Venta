@@ -312,7 +312,24 @@ async function confirmCheckout() {
             alert(res.message);
         }
     } catch (err) {
-        alert(err.message || 'Error al procesar el cobro.');
+        if (!navigator.onLine || (err.message && (err.message.includes('fetch') || err.message.includes('Failed') || err.message.includes('Network')))) {
+            const offlineQueue = JSON.parse(localStorage.getItem('pos_offline_sales') || '[]');
+            const offlinePayload = {
+                items: STATE.cart,
+                payment_method: method,
+                cash_received: cashReceived,
+                customer_id: customerId,
+                offline_timestamp: new Date()
+            };
+            offlineQueue.push(offlinePayload);
+            localStorage.setItem('pos_offline_sales', JSON.stringify(offlineQueue));
+
+            alert(`🟡 MODO OFFLINE: Venta cobrada y guardada localmente.\nSe sincronizará automáticamente con la nube cuando regrese el internet.`);
+            closeCheckoutModal();
+            clearCart();
+        } else {
+            alert(err.message || 'Error al procesar el cobro.');
+        }
     }
 }
 

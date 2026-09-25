@@ -93,10 +93,18 @@
                 </button>
                 <h2 id="view-title" class="font-extrabold text-xl text-gray-800">Punto de Venta</h2>
             </div>
-            <!-- STATUS SANGRÍA & ALERTA DE EFECTIVO -->
-            <div id="drawer-warning-banner" class="hidden bg-amber-100 border border-amber-300 text-amber-800 text-xs px-3 py-1.5 rounded-lg flex items-center gap-2 animate-pulse">
-                <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>
-                <span class="font-bold">¡Atención! Efectivo en caja alto. Se sugiere Sangría.</span>
+            
+            <div class="flex items-center gap-3">
+                <!-- INDICADOR DE RED Y MODO OFFLINE -->
+                <div id="network-status-badge" class="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[11px] font-extrabold rounded-full flex items-center gap-1.5 shadow-sm">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> En Línea (Nube)
+                </div>
+
+                <!-- STATUS SANGRÍA & ALERTA DE EFECTIVO -->
+                <div id="drawer-warning-banner" class="hidden bg-amber-100 border border-amber-300 text-amber-800 text-xs px-3 py-1.5 rounded-lg flex items-center gap-2 animate-pulse">
+                    <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>
+                    <span class="font-bold">¡Atención! Efectivo en caja alto. Se sugiere Sangría.</span>
+                </div>
             </div>
         </header>
 
@@ -271,6 +279,22 @@
                             </thead>
                             <tbody id="cashiers-table-body" class="divide-y divide-gray-100 font-medium"></tbody>
                         </table>
+                    </div>
+                </div>
+
+                <!-- COPIAS DE SEGURIDAD Y BACKUPS DE BASE DE DATOS -->
+                <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                    <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
+                        <div>
+                            <h4 class="font-extrabold text-base text-slate-900">💾 Copias de Seguridad y Respaldo de Base de Datos</h4>
+                            <p class="text-xs text-gray-500">Genere y descargue respaldos en cualquier momento de todas las ventas, productos e inventarios.</p>
+                        </div>
+                        <button onclick="triggerBackupCreation()" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow">
+                            <i class="fa-solid fa-download mr-1"></i> Generar Respaldo Ahora
+                        </button>
+                    </div>
+                    <div id="backups-list-container" class="space-y-2 mt-3">
+                        <!-- Carga de respaldos -->
                     </div>
                 </div>
 

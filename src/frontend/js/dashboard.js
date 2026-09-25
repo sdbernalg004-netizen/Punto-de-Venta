@@ -13,6 +13,7 @@ async function loadDashboardOverview() {
             renderDashboardCharts(res.overview);
             renderCashiersTable(res.overview.cashier_sales);
             loadReorderSuggestions();
+            loadBackupsList();
         }
     } catch (error) {
         console.error('Error al cargar dashboard:', error);
@@ -168,4 +169,31 @@ function renderAuditTable(logs) {
             <td class="p-2.5 text-gray-700 font-medium">${log.details}</td>
         </tr>
     `).join('');
+}
+
+async function loadBackupsList() {
+    const container = document.getElementById('backups-list-container');
+    if (!container) return;
+
+    try {
+        const res = await apiFetch('/api/admin/backup/list');
+        if (res.success && res.backups.length > 0) {
+            container.innerHTML = res.backups.map(b => `
+                <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                    <div>
+                        <div class="font-extrabold text-xs text-slate-900">${b.filename}</div>
+                        <div class="text-[10px] text-gray-500">${new Date(b.created_at).toLocaleString()} | ${b.size_kb} KB</div>
+                    </div>
+                    <a href="/api/admin/backup/download/${b.filename}" download 
+                       class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg flex items-center gap-1 shadow">
+                        <i class="fa-solid fa-file-arrow-down"></i> Descargar
+                    </a>
+                </div>
+            `).join('');
+        } else {
+            container.innerHTML = '<div class="text-center py-3 text-gray-400 font-semibold text-xs">No hay copias de seguridad generadas aún. Presione "Generar Respaldo Ahora".</div>';
+        }
+    } catch (e) {
+        container.innerHTML = '<div class="text-center py-2 text-rose-500 font-bold text-xs">Error al cargar lista de respaldos.</div>';
+    }
 }

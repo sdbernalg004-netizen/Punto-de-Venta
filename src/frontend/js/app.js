@@ -269,9 +269,77 @@ async function handleAddStaff(e) {
     }
 }
 
+// Registro de Service Worker PWA
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW reg error:', err));
+    });
+}
+
+// Monitoreo de Red y Sincronización de Ventas Offline
+function updateNetworkStatus() {
+    const badge = document.getElementById('network-status-badge');
+    if (!badge) return;
+
+    if (navigator.onLine) {
+        badge.className = 'px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[11px] font-extrabold rounded-full flex items-center gap-1.5 shadow-sm';
+        badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> En Línea (Nube)';
+        syncOfflineSalesQueue();
+    } else {
+        badge.className = 'px-2.5 py-1 bg-amber-100 text-amber-900 text-[11px] font-extrabold rounded-full flex items-center gap-1.5 shadow-sm border border-amber-300';
+        badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span> Modo Offline (Guardando Local)';
+    }
+}
+
+window.addEventListener('online', updateNetworkStatus);
+window.addEventListener('offline', updateNetworkStatus);
+
+async function syncOfflineSalesQueue() {
+    const offlineQueue = JSON.parse(localStorage.getItem('pos_offline_sales') || '[]');
+    if (offlineQueue.length === 0) return;
+
+    console.log(`📡 Sincronizando ${offlineQueue.length} ventas offline pendientes...`);
+    const remainingQueue = [];
+
+    for (const salePayload of offlineQueue) {
+        try {
+            const res = await apiFetch('/api/pos/checkout', {
+                method: 'POST',
+                body: JSON.stringify(salePayload)
+            });
+            if (!res.success) remainingQueue.push(salePayload);
+        } catch (e) {
+            remainingQueue.push(salePayload);
+        }
+    }
+
+    localStorage.setItem('pos_offline_sales', JSON.stringify(remainingQueue));
+    if (remainingQueue.length === 0) {
+        alert('🎉 ¡Todas las ventas realizadas offline fueron sincronizadas exitosamente en la nube!');
+        if (STATE.currentView === 'pos' && typeof loadPOSProducts === 'function') loadPOSProducts();
+    }
+}
+
+// Funciones para Backup desde el Dashboard del Dueño
+async function triggerBackupCreation() {
+    try {
+        const res = await apiFetch('/api/admin/backup/create', { method: 'POST' });
+        if (res.success) {
+            alert(`✅ ${res.message}\nTamaño: ${res.size_kb} KB`);
+            if (typeof loadBackupsList === 'function') loadBackupsList();
+        } else {
+            alert(res.message);
+        }
+    } catch (e) {
+        alert(e.message || 'Error al generar respaldo.');
+    }
+}
+
 // Inicialización de App con Carga Instantánea de Login
 window.addEventListener('DOMContentLoaded', async () => {
     initWebSocket();
+    updateNetworkStatus();
+
     if (!STATE.token) {
         document.getElementById('app-layout').classList.add('hidden');
         document.getElementById('modal-login').classList.remove('hidden');
