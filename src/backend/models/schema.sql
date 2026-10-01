@@ -253,3 +253,55 @@ CREATE TABLE IF NOT EXISTS parked_tickets (
     cart_json TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 19. Cuentas por Cobrar y Crédito a Clientes ("Fiado")
+CREATE TABLE IF NOT EXISTS customer_credits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+    amount_credited REAL NOT NULL,
+    amount_paid REAL DEFAULT 0.0,
+    status VARCHAR(20) DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'PARTIAL', 'PAID')),
+    due_date DATE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS credit_payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    credit_id INTEGER NOT NULL REFERENCES customer_credits(id) ON DELETE CASCADE,
+    amount REAL NOT NULL,
+    payment_method VARCHAR(20) DEFAULT 'CASH',
+    cashier_id INTEGER NOT NULL REFERENCES users(id),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 20. Motor de Promociones Automatizadas (2x1, 3x2, % Descuento)
+CREATE TABLE IF NOT EXISTS promotions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR(100) NOT NULL,
+    promo_type VARCHAR(30) NOT NULL CHECK (promo_type IN ('BUY_X_GET_Y', 'PERCENT_DISCOUNT')),
+    buy_qty INTEGER DEFAULT 1,
+    pay_qty INTEGER DEFAULT 1,
+    discount_percent REAL DEFAULT 0.0,
+    product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
+    category_id INTEGER REFERENCES categories(id) ON DELETE CASCADE,
+    day_of_week INTEGER, -- NULL = Todos los días, 0 = Domingo, 3 = Miércoles...
+    is_active INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 21. Facturación Electrónica SAT CFDI 4.0
+CREATE TABLE IF NOT EXISTS invoices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sale_id INTEGER UNIQUE NOT NULL REFERENCES sales(id),
+    rfc VARCHAR(20) NOT NULL,
+    business_name VARCHAR(150) NOT NULL,
+    tax_regime VARCHAR(10) NOT NULL,
+    postal_code VARCHAR(10) NOT NULL,
+    use_cfdi VARCHAR(10) NOT NULL,
+    uuid VARCHAR(50) UNIQUE,
+    pdf_url TEXT,
+    xml_url TEXT,
+    status VARCHAR(20) DEFAULT 'GENERATED',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);

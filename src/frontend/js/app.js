@@ -90,6 +90,8 @@ function switchView(viewName) {
         inventory: 'Inventarios y Lotes por Sucursal',
         shifts: 'Caja, Turnos y Arqueo a Ciegas',
         dashboard: 'Dashboard del Dueño y Analítica',
+        credits: 'Cuentas por Cobrar & Créditos ("Fiado")',
+        promotions: 'Motor de Promociones Automatizadas',
         audit: 'Bitácora de Auditoría Anti-Fraude'
     };
     document.getElementById('view-title').innerText = titles[viewName] || 'Punto de Venta';
@@ -99,6 +101,8 @@ function switchView(viewName) {
     if (viewName === 'inventory' && typeof loadInventory === 'function') loadInventory();
     if (viewName === 'shifts' && typeof loadShiftStatus === 'function') loadShiftStatus();
     if (viewName === 'dashboard' && typeof loadDashboardOverview === 'function') loadDashboardOverview();
+    if (viewName === 'credits' && typeof loadCreditsTable === 'function') loadCreditsTable();
+    if (viewName === 'promotions' && typeof loadPromotionsGrid === 'function') loadPromotionsGrid();
     if (viewName === 'audit' && typeof loadAuditLogs === 'function') loadAuditLogs();
 }
 
@@ -332,6 +336,150 @@ async function triggerBackupCreation() {
         }
     } catch (e) {
         alert(e.message || 'Error al generar respaldo.');
+    }
+}
+
+// Resumen por WhatsApp
+async function sendWhatsAppSummary() {
+    try {
+        const res = await apiFetch('/api/analytics/whatsapp-summary');
+        if (res.success && res.whatsapp_url) {
+            window.open(res.whatsapp_url, '_blank');
+        }
+    } catch (e) {
+        alert('Error al generar enlace de WhatsApp.');
+    }
+}
+
+// Facturación Electrónica SAT CFDI 4.0
+function openInvoicingModal(ticketNumber = '') {
+    if (ticketNumber) {
+        document.getElementById('inv-ticket-num').value = ticketNumber;
+    }
+    document.getElementById('modal-invoicing').classList.remove('hidden');
+}
+
+function closeInvoicingModal() {
+    document.getElementById('modal-invoicing').classList.add('hidden');
+}
+
+async function handleGenerateInvoice(e) {
+    e.preventDefault();
+    const payload = {
+        ticket_number: document.getElementById('inv-ticket-num').value.trim(),
+        rfc: document.getElementById('inv-rfc').value.trim(),
+        business_name: document.getElementById('inv-name').value.trim(),
+        postal_code: document.getElementById('inv-cp').value.trim(),
+        tax_regime: document.getElementById('inv-regime').value,
+        use_cfdi: document.getElementById('inv-use').value
+    };
+
+    try {
+        const res = await apiFetch('/api/invoices/generate', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+
+        if (res.success) {
+            alert(`🎉 ${res.message}\nUUID: ${res.invoice.uuid}`);
+            closeInvoicingModal();
+        } else {
+            alert(res.message);
+        }
+    } catch (err) {
+        alert(err.message || 'Error al timbrar factura.');
+    }
+}
+
+// Créditos y Cuentas por Cobrar
+async function loadCreditsTable() {
+    const tbody = document.getElementById('credits-table-body');
+    if (!tbody) return;
+
+    try {
+        const res = await apiFetch('/api/credits');
+        if (res.success && res.credits.length > 0) {
+            tbody.innerHTML = res.credits.map(c => {
+                const pending = c.amount_credited - c.amount_paid;
+                return `
+                    <tr class="hover:bg-gray-50 text-xs">
+                        <td class="p-2.5 font-bold text-slate-800">${c.customer_name}</td>
+                        <td class="p-2.5 font-mono text-cyan-700">${c.ticket_number}</td>
+                        <td class="p-2.5 font-bold text-gray-700">$${c.amount_credited.toFixed(2)}</td>
+                        <td class="p-2.5 font-bold text-emerald-600">$${c.amount_paid.toFixed(2)}</td>
+                        <td class="p-2.5 font-black text-rose-600 text-sm">$${pending.toFixed(2)}</td>
+                        <td class="p-2.5">
+                            <span class="px-2 py-0.5 rounded font-bold text-[10px] ${c.status === 'PAID' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+                                ${c.status}
+                            </span>
+                        </td>
+                        <td class="p-2.5 text-center">
+                            ${pending > 0 ? `
+                                <button onclick="promptCreditPayment(${c.id}, ${pending})" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg shadow">
+                                    💵 Abonar
+                                </button>
+                            ` : '<span class="text-gray-400 font-bold">Liquidado</span>'}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        } else {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center py-6 text-gray-400">No hay cuentas por cobrar o créditos registrados.</td></tr>';
+        }
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-rose-500 font-bold">Error al cargar créditos.</td></tr>';
+    }
+}
+
+async function promptCreditPayment(creditId, pendingAmount) {
+    const amountStr = prompt(`Ingrese el monto a abonar (Saldo pendiente: $${pendingAmount.toFixed(2)}):`, pendingAmount);
+    if (amountStr === null) return;
+    const amount = parseFloat(amountStr);
+    if (isNaN(amount) || amount <= 0) return;
+
+    try {
+        const res = await apiFetch('/api/credits/payment', {
+            method: 'POST',
+            body: JSON.stringify({ credit_id: creditId, amount, payment_method: 'CASH' })
+        });
+
+        if (res.success) {
+            alert(`✅ ${res.message}`);
+            loadCreditsTable();
+        } else {
+            alert(res.message);
+        }
+    } catch (e) {
+        alert(e.message || 'Error al abonar.');
+    }
+}
+
+// Promociones Automatizadas
+async function loadPromotionsGrid() {
+    const grid = document.getElementById('promotions-grid');
+    if (!grid) return;
+
+    try {
+        const res = await apiFetch('/api/promotions');
+        if (res.success && res.promotions.length > 0) {
+            grid.innerHTML = res.promotions.map(p => `
+                <div class="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm space-y-2">
+                    <div class="flex justify-between items-start">
+                        <span class="px-2 py-0.5 bg-pink-100 text-pink-800 font-extrabold text-[10px] rounded-md uppercase">${p.promo_type}</span>
+                        <span class="text-xs text-gray-400 font-bold">ID #${p.id}</span>
+                    </div>
+                    <h4 class="font-black text-slate-900 text-sm">${p.name}</h4>
+                    <p class="text-xs text-gray-600 font-medium">Aplica para: ${p.product_name || p.category_name || 'Todo el catálogo'}</p>
+                    <div class="text-xs text-emerald-600 font-bold">
+                        ${p.promo_type === 'BUY_X_GET_Y' ? `Lleva ${p.buy_qty} y Paga ${p.pay_qty}` : `${p.discount_percent}% de Descuento Especial`}
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            grid.innerHTML = '<div class="col-span-3 text-center py-6 text-gray-400 font-bold">No hay promociones activas registradas.</div>';
+        }
+    } catch (e) {
+        grid.innerHTML = '<div class="col-span-3 text-center py-4 text-rose-500 font-bold">Error al cargar promociones.</div>';
     }
 }
 

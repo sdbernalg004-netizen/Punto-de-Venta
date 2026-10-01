@@ -198,8 +198,90 @@ function getFraudAuditTrail(req, res) {
     }
 }
 
+function exportCSVReport(req, res) {
+    try {
+        const { type } = req.query; // 'sales', 'inventory'
+
+        if (type === 'sales') {
+            const sales = db.prepare(`
+                SELECT s.ticket_number, s.created_at, b.name as sucursal, u.full_name as cajero,
+                       s.payment_method, s.subtotal, s.discount_amount, s.total_amount
+                FROM sales s
+                JOIN branches b ON s.branch_id = b.id
+                JOIN users u ON s.cashier_id = u.id
+                ORDER BY s.id DESC
+            `).all();
+
+            let csv = 'Folio Ticket,Fecha,Sucursal,Cajero,Metodo Pago,Subtotal,Descuento,Total\n';
+            sales.forEach(s => {
+                csv += `"${s.ticket_number}","${s.created_at}","${s.sucursal}","${s.cajero}","${s.payment_method}",${s.subtotal},${s.discount_amount},${s.total_amount}\n`;
+            });
+
+            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+            res.setHeader('Content-Disposition', 'attachment; filename="reporte_ventas.csv"');
+            return res.send(csv);
+        }
+
+        if (type === 'inventory') {
+            const inventory = db.prepare(`
+                SELECT p.sku, p.name as producto, c.name as categoria, p.cost_price, p.sale_price,
+                       COALESCE(SUM(i.stock_quantity), 0) as stock_total
+                FROM products p
+                LEFT JOIN categories c ON p.category_id = c.id
+                LEFT JOIN inventory i ON p.id = i.product_id
+                GROUP BY p.id
+                ORDER BY p.name ASC
+            `).all();
+
+            let csv = 'SKU,Producto,Categoria,Precio Costo,Precio Venta,Stock Total\n';
+            inventory.forEach(i => {
+                csv += `"${i.sku}","${i.producto}","${i.categoria}",${i.cost_price},${i.sale_price},${i.stock_total}\n`;
+            });
+
+            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+            res.setHeader('Content-Disposition', 'attachment; filename="reporte_inventarios.csv"');
+            return res.send(csv);
+        }
+
+        res.status(400).json({ success: false, message: 'Tipo de reporte no válido.' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Error al exportar reporte CSV.' });
+    }
+}
+
+function getWhatsAppSummary(req, res) {
+    try {
+        const salesToday = db.prepare(`
+            SELECT COALESCE(SUM(total_amount), 0) as total, COUNT(id) as count
+            FROM sales WHERE status = 'COMPLETED' AND date(created_at) = date('now')
+        `).get();
+
+        const lowStock = db.prepare(`
+            SELECT COUNT(DISTINCT p.id) as count
+            FROM products p
+            JOIN inventory i ON p.id = i.product_id
+            WHERE i.stock_quantity <= 10 AND p.is_active = 1
+        `).get().count;
+
+        const text = `📊 *RESUMEN POS DEL DÍA*\n\n` +
+                     `💰 *Ventas de Hoy:* $${salesToday.total.toFixed(2)}\n` +
+                     `🧾 *Tickets Procesados:* ${salesToday.count}\n` +
+                     `⚠️ *Productos con Stock Bajo:* ${lowStock}\n\n` +
+                     `_Generado desde Dulce POS Cloud_`;
+
+        const encodedText = encodeURIComponent(text);
+        const whatsappUrl = `https://api.whatsapp.com/send?text=${encodedText}`;
+
+        res.json({ success: true, whatsapp_url: whatsappUrl, summary_text: text });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Error al generar resumen de WhatsApp.' });
+    }
+}
+
 module.exports = {
     getDashboardOverview,
     getReorderSuggestions,
-    getFraudAuditTrail
+    getFraudAuditTrail,
+    exportCSVReport,
+    getWhatsAppSummary
 };

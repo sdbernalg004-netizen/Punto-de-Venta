@@ -20,6 +20,9 @@ const inventoryController = require('./controllers/inventory.controller');
 const shiftsController = require('./controllers/shifts.controller');
 const analyticsController = require('./controllers/analytics.controller');
 const backupController = require('./controllers/backup.controller');
+const creditController = require('./controllers/credit.controller');
+const promotionsController = require('./controllers/promotions.controller');
+const invoicingController = require('./controllers/invoicing.controller');
 
 const { authenticateToken, requireRole, requireProductPermission, scopeBranch, verifyManagerPin } = require('./middlewares/auth.middleware');
 
@@ -84,15 +87,29 @@ app.get('/api/shifts/current', authenticateToken, shiftsController.getCurrentShi
 app.post('/api/shifts/movement', authenticateToken, shiftsController.recordMovement);
 app.post('/api/shifts/close', authenticateToken, shiftsController.closeShift);
 
-// 5. Analítica, Proyecciones e Inteligencia Anti-Fraude (Dueño / Admin)
+// 5. Analítica, Proyecciones, Exportación CSV y WhatsApp (Dueño / Admin)
 app.get('/api/analytics/dashboard', authenticateToken, requireRole('ADMIN', 'MANAGER'), analyticsController.getDashboardOverview);
 app.get('/api/analytics/reorder-suggestions', authenticateToken, requireRole('ADMIN', 'MANAGER'), analyticsController.getReorderSuggestions);
 app.get('/api/analytics/fraud-trail', authenticateToken, requireRole('ADMIN'), analyticsController.getFraudAuditTrail);
+app.get('/api/analytics/export-csv', authenticateToken, analyticsController.exportCSVReport);
+app.get('/api/analytics/whatsapp-summary', authenticateToken, analyticsController.getWhatsAppSummary);
 
 // 6. Respaldos Automáticos y Descarga de Base de Datos (Dueño / Admin)
 app.post('/api/admin/backup/create', authenticateToken, requireRole('ADMIN'), backupController.createBackup);
 app.get('/api/admin/backup/list', authenticateToken, requireRole('ADMIN'), backupController.listBackups);
 app.get('/api/admin/backup/download/:filename', authenticateToken, requireRole('ADMIN'), backupController.downloadBackup);
+
+// 7. Cuentas por Cobrar ("Fiado") y Crédito a Clientes
+app.get('/api/credits', authenticateToken, creditController.getCustomerCredits);
+app.post('/api/credits/payment', authenticateToken, creditController.recordCreditPayment);
+
+// 8. Motor de Promociones (2x1, 3x2, % Descuentos)
+app.get('/api/promotions', authenticateToken, promotionsController.getActivePromotions);
+app.post('/api/promotions/create', authenticateToken, requireRole('ADMIN', 'MANAGER'), promotionsController.createPromotion);
+
+// 9. Facturación Electrónica SAT CFDI 4.0
+app.post('/api/invoices/generate', invoicingController.generateInvoice);
+app.get('/api/invoices/ticket/:ticket_number', invoicingController.getInvoiceByTicket);
 
 // Ruta Fallback para SPA HTML5
 app.use((req, res) => {
